@@ -11,6 +11,47 @@ can consume CAMM without reading the civ-vi-access source. Pre-1.0
 means any release can break API; consumers pin to a tag SHA and
 upgrade when ready.
 
+## 0.0.5 — 2026-05-17 — Step 8: speech seams
+
+Log-tail speech routing moves into CAMM via two new manifest-supplied
+interfaces:
+
+- **IMessageSanitizer** — strips/transforms per-game in-engine markup
+  ([ICON_*], [COLOR:*], [NEWLINE], etc.) before lines reach Tolk.
+- **IScreenReaderMarkerProtocol** — identifies which log lines are
+  screen-reader-bound (Civ VI uses `#SCREENREADER`; other games will
+  use different conventions) and parses any embedded options
+  (NOINTERRUPT etc.).
+
+New Camm.Speech namespace:
+
+- AccessibleOutputHandler — Tolk-routing wrapper with the
+  interrupt-policy logic (3-second non-interrupt window per
+  NOINTERRUPT line). Reads MarkerProtocol + Sanitizer from
+  CammHost.Manifest at call time.
+- LogTailSpeaker — generic log-tail loop (renamed from LogFileWatcher),
+  polls a file for new bytes and feeds them to the Mediator.
+- Mediator — fans inbound log chunks to AccessibleOutputHandler (speech)
+  + TextOutputHandler (console diagnostics).
+- TextOutputHandler — Console.WriteLine wrapper.
+- SpeechOptions — record returned by MarkerProtocol.ParseOptions
+  (NoInterrupt for now; extensible).
+
+Two new required CammModManifest fields:
+
+    Sanitizer = new MyGameMessageSanitizer(),
+    MarkerProtocol = new MyGameScreenReaderMarkerProtocol(),
+
+Consumer side (civ-vi-access in this commit's companion PR):
+CivViMessageSanitizer + CivViScreenReaderMarkerProtocol implement
+the seams with the existing regex maps + `#SCREENREADER[...]`
+prefix logic.
+
+After this release, the consumer's CivViAccess/ directory holds
+only Program.cs + the two seam implementations + the mod payload —
+ready for Step 9 (CammHost.RunAsync) to consume the remaining
+routing logic.
+
 ## 0.0.4 — 2026-05-17 — Step 6: Installer + Wizard + ChannelPickerDialog
 
 Installer.cs, ChannelPickerDialog.cs, and the entire Wizard/ folder

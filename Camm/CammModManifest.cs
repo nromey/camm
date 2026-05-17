@@ -88,4 +88,17 @@ public sealed class CammModManifest
     // "Steam" because most accessibility-mod targets ship via Steam.
     // Overridable for Epic / GOG / standalone-installer games.
     public string TargetGameLauncherName { get; init; } = "Steam";
+
+    // Per-mod in-engine markup sanitizer for log-tail speech.
+    // Strips/transforms markup ([ICON_*], [COLOR:*], [NEWLINE], etc.)
+    // before lines reach Tolk. Each game has its own markup
+    // vocabulary; consumer provides an implementation.
+    public required Speech.IMessageSanitizer Sanitizer { get; init; }
+
+    // Per-mod log-line marker convention. Identifies which lines are
+    // screen-reader-bound and parses any embedded options
+    // (NOINTERRUPT etc.). Civ VI Access uses prefix "#SCREENREADER";
+    // a different game's accessibility mod would use a different
+    // convention.
+    public required Speech.IScreenReaderMarkerProtocol MarkerProtocol { get; init; }
 }
