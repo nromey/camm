@@ -11,6 +11,77 @@ can consume CAMM without reading the civ-vi-access source. Pre-1.0
 means any release can break API; consumers pin to a tag SHA and
 upgrade when ready.
 
+## 0.1.0 — 2026-05-17 — First consumable release
+
+The extraction from civ-vi-access is functionally complete. CAMM
+now has a stable public surface that a second accessibility-mod
+author can consume without reading civ-vi-access source:
+
+    using Camm;
+
+    return await CammHost.RunAsync(args, new CammModManifest
+    {
+        // Identity
+        LocalAppDataFolderName = "...",
+        DisplayName = "...",
+        Publisher = "...",
+        TargetGameDisplayName = "...",
+        TargetGameLauncherName = "Steam",
+        LauncherExeName = "...",
+        AppsAndFeaturesKeyName = "...",
+        ProjectUrl = "...",
+
+        // Update channel
+        LauncherAssetNamePattern = "<mod>-{0}.exe",
+        GitHubReleasesOwner = "...",
+        GitHubReleasesRepo = "...",
+        UserAgent = "<Mod>.Launcher",
+
+        // Target game
+        IfeoTargetExeNames = new[] { "GameExe.exe" },
+        GameProcessNames = new[] { "GameExe" },
+
+        // Mod payload
+        ModPayloadFolderName = "...",
+        ModPayloadSentinelFileName = "...",
+        ModPayloadDefaultDestination = () => @"<mod folder>",
+
+        // Per-mod implementations
+        Sanitizer = new MyGameMessageSanitizer(),
+        MarkerProtocol = new MyGameScreenReaderMarkerProtocol(),
+        GameInstance = new MyGameInstance(),
+    });
+
+Adopters write three small implementation classes (Sanitizer,
+MarkerProtocol, GameInstance), a per-game manifest, and a payload
+directory of in-game mod files. CAMM provides install wizard,
+uninstaller, IFEO transparent-launch redirect, Tolk speech routing,
+GitHub-Releases auto-update with channel selection, AOT-clean
+release pipeline. Public-surface stability is committed from this
+release forward; breaking changes will bump the minor version.
+
+What's in: SemVer, Logger, ProcessLauncher, TolkBootstrap, Dialogs,
+LauncherSettings + UpdateChannel, GitHubReleasesClient, Updater,
+IfeoInstaller, AppsAndFeaturesRegistration, WindowFocusManager,
+ModFiles, ModDeployer, Installer, ChannelPickerDialog, Wizard (5
+pages), Speech (AccessibleOutputHandler, LogTailSpeaker, Mediator,
+TextOutputHandler, IMessageSanitizer, IScreenReaderMarkerProtocol),
+CammModManifest, CammHost (with RunAsync entry), IGameInstance.
+Vendored Tolk runtime under third_party/tolk with SOURCE.md
+documenting provenance.
+
+What's not in this release (deferred):
+- LocaleCatalog + en.json (Step 7 of the original extraction plan).
+  Visible strings remain hardcoded English. The architecture
+  accommodates a JSON catalog drop-in; no API churn expected when it
+  lands in a 0.1.x release.
+- camm-new bootstrap tool. Adopters currently clone /Camm/ via
+  ProjectReference manually.
+- camm-registry GitHub Pages site for discovering CAMM-built mods.
+
+First adopter: civ-vi-access (the source mod) consumes this CAMM
+release at v0.3.0.
+
 ## 0.0.6 — 2026-05-17 — Step 9: CammHost.RunAsync (the unified entry point)
 
 CammHost gains a `RunAsync(args, manifest)` method that absorbs the
