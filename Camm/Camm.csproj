@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Library project — consumed via <ProjectReference> from a
+         mod-specific launcher exe project. CAMM itself doesn't ship
+         a standalone executable; the consumer adds <PublishAot> and
+         produces the exe. -->
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <AssemblyName>Camm</AssemblyName>
+    <RootNamespace>Camm</RootNamespace>
+    <Product>CAMM</Product>
+    <AssemblyTitle>Chameleon Access Mod Manager</AssemblyTitle>
+    <Company>Noel Romey</Company>
+
+    <!-- AOT + trim correctness flags. Because the consumer publishes
+         with PublishAot=true, every method CAMM exposes must be
+         AOT-safe and trim-safe. These properties make the compiler
+         enforce that at build time rather than at the consumer's
+         publish time. -->
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+
+    <!-- LibraryImport's source generator emits unsafe pointer code
+         for marshalling. Required for the AOT-clean P/Invokes in
+         TolkBootstrap and the TaskDialog button-array pointer
+         arithmetic in Dialogs. Does not weaken consumer code —
+         only permits the generated stubs to compile. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <!-- Tolk binding source. Same pattern as the original civ-vi-access
+       launcher: ship the C# binding inline rather than referencing it
+       as a NuGet (no usable Tolk NuGet exists). The native DLLs that
+       go alongside aren't embedded HERE — the consuming exe embeds
+       them as resources, and TolkBootstrap extracts them at runtime
+       so the consumer ships a standalone exe. -->
+  <ItemGroup>
+    <Compile Include="..\third_party\tolk\dotnet\Tolk.cs" Link="Tolk\Tolk.cs" />
+  </ItemGroup>
+
+</Project>
