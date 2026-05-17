@@ -11,6 +11,47 @@ can consume CAMM without reading the civ-vi-access source. Pre-1.0
 means any release can break API; consumers pin to a tag SHA and
 upgrade when ready.
 
+## 0.1.1 — 2026-05-17 — Step 7: localization (LocaleCatalog + en.json)
+
+`Camm.Localization.Strings.Get(key)` looks up user-visible text in
+the locale catalog. Lookup chain:
+
+1. Loose `lang/<culture>.json` next to the consuming launcher exe
+   (CurrentUICulture.Name, e.g. `de-DE.json`).
+2. Loose `lang/<language>.json` (parent culture, e.g. `de.json`).
+3. Embedded `lang/en.json` inside Camm.dll — always available.
+4. Return the key + log a warning. Missing-string bugs surface to
+   the user but never crash the launcher.
+
+Manifest substitution tokens (`__DISPLAY_NAME__`, `__TARGET_GAME__`,
+`__TARGET_LAUNCHER__`, `__PUBLISHER__`, `__INSTALL_DIR__`,
+`__LOCAL_APP_DATA_FOLDER__`, `__LAUNCHER_EXE__`, `__VERSION__`) get
+replaced at `Get()` time from `CammHost.Manifest`. Keeps the
+localized values game-agnostic in the JSON file itself; per-mod
+identity is injected at runtime.
+
+AOT-clean via source-generated `LocaleJsonContext`
+(`Dictionary<string,string>` only). No reflection on user types.
+
+**Adding a translation:** copy `Camm/lang/en.json` to a new
+`Camm/lang/<culture>.json`, translate the values, leave the keys
+and `__*__` tokens untouched. Crowdin parses flat JSON natively;
+translators can drop new files as PRs against the CAMM repo.
+
+**What's localized:** all user-visible wizard text, all TaskDialog
+content (cancel-confirm, channel picker, already-installed,
+uninstall confirm + completion), all Tolk-spoken status messages
+(update notifications, foreground-failed, startup-timeout, etc.).
+
+**What's NOT localized** (by design): log/diagnostic messages
+(English for devs), the "Powered by CAMM" footer (lineage marker),
+launcher.ini comments (English file-format docs).
+
+Loose-file detection happens once at first `Strings.Get` call (lazy
+init). Adding new translations doesn't require a rebuild of CAMM
+or the consuming launcher — just drop the JSON file next to the
+deployed exe.
+
 ## 0.1.0 — 2026-05-17 — First consumable release
 
 The extraction from civ-vi-access is functionally complete. CAMM

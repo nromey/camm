@@ -1,19 +1,17 @@
 using System.Diagnostics;
 using System.Runtime.Versioning;
 using System.Windows.Forms;
+using Camm.Localization;
 
 namespace Camm.Wizard;
 
 [SupportedOSPlatform("windows")]
 public sealed class InstallingPage : UserControl, IWizardPage
 {
-    private const string HeadingText = "Installing...";
-    private const string StatusInitial = "Preparing to install...";
-
     private readonly Label _status;
     private readonly ProgressBar _progress;
 
-    public string Title => "Installing";
+    public string Title => Strings.Get("Wizard.Installing.Title");
     public bool CanGoNext => false;
     public Control? InitialFocusControl => null;
 
@@ -22,8 +20,7 @@ public sealed class InstallingPage : UserControl, IWizardPage
     // revisit if/when CAMM grows a staged-rollback path.
     public bool ButtonsEnabled => false;
 
-    public string AnnouncementText =>
-        $"Installing {CammHost.Manifest.DisplayName}. Please wait.";
+    public string AnnouncementText => Strings.Get("Wizard.Installing.Announcement");
 
     public event EventHandler? CanGoNextChanged { add { } remove { } }
     public event EventHandler? AdvanceRequested;
@@ -32,28 +29,30 @@ public sealed class InstallingPage : UserControl, IWizardPage
     {
         Dock = DockStyle.Fill;
 
+        var headingText = Strings.Get("Wizard.Installing.Heading");
         var heading = new Label
         {
-            Text = HeadingText,
+            Text = headingText,
             Font = new System.Drawing.Font("Segoe UI", 14F, System.Drawing.FontStyle.Bold),
             AutoSize = true,
             Location = new System.Drawing.Point(24, 24),
-            AccessibleName = HeadingText,
+            AccessibleName = headingText,
             AccessibleRole = AccessibleRole.StaticText,
         };
 
+        var statusInitial = Strings.Get("Wizard.Installing.StatusInitial");
         _status = new Label
         {
-            Text = StatusInitial,
+            Text = statusInitial,
             AutoSize = false,
             Location = new System.Drawing.Point(24, 80),
             Size = new System.Drawing.Size(500, 30),
-            AccessibleName = StatusInitial,
+            AccessibleName = statusInitial,
             AccessibleRole = AccessibleRole.StaticText,
         };
 
-        // Marquee mode: the install is short (~2 seconds for file copy
-        // + registry writes) and has no useful percent-complete to
+        // Marquee mode: install is short (~2 seconds for file copy +
+        // registry writes) and has no useful percent-complete to
         // report. The marquee gives visual "something is happening"
         // feedback without lying about progress.
         _progress = new ProgressBar
@@ -90,8 +89,9 @@ public sealed class InstallingPage : UserControl, IWizardPage
             await Task.Delay(2000).ConfigureAwait(false);
             BeginInvoke(() =>
             {
-                _status.Text = "Install complete (dry run).";
-                _status.AccessibleName = _status.Text;
+                var msg = Strings.Get("Wizard.Installing.StatusSuccessDryRun");
+                _status.Text = msg;
+                _status.AccessibleName = msg;
                 AdvanceRequested?.Invoke(this, EventArgs.Empty);
             });
         });
@@ -124,9 +124,7 @@ public sealed class InstallingPage : UserControl, IWizardPage
             {
                 if (IfeoInstaller.IsRunningElevated())
                 {
-                    // Already elevated (rare for the wizard, but it
-                    // happens if the user launched the installer via
-                    // an elevated cmd). Call ApplyInstall directly —
+                    // Already elevated. Call ApplyInstall directly —
                     // no need to spawn another process.
                     Installer.ApplyInstall(
                         msg => { Logger.Info($"InstallingPage(elevated): {msg}"); UpdateStatus(msg); },
@@ -159,8 +157,7 @@ public sealed class InstallingPage : UserControl, IWizardPage
             }
             catch (System.ComponentModel.Win32Exception)
             {
-                // User declined the UAC prompt.
-                error = "Install cancelled — administrator permission was not granted.";
+                error = Strings.Get("Wizard.Installing.UacDeclined");
             }
             catch (Exception ex)
             {
@@ -171,7 +168,9 @@ public sealed class InstallingPage : UserControl, IWizardPage
             BeginInvoke(() =>
             {
                 context.InstallError = error;
-                _status.Text = error is null ? "Install complete." : "Install failed.";
+                _status.Text = error is null
+                    ? Strings.Get("Wizard.Installing.StatusSuccess")
+                    : Strings.Get("Wizard.Installing.StatusFailure");
                 _status.AccessibleName = _status.Text;
                 AdvanceRequested?.Invoke(this, EventArgs.Empty);
             });
@@ -181,7 +180,11 @@ public sealed class InstallingPage : UserControl, IWizardPage
     private void UpdateStatus(string message)
     {
         // Called from background thread when ApplyInstall is invoked
-        // in-process (elevated path). Marshal to UI thread.
+        // in-process (elevated path). Marshal to UI thread. Note: the
+        // message here is the localized status text from ApplyInstall
+        // (or English fallback if that's not localized) — it's a log-
+        // style message about the current step, not a translated UI
+        // string.
         if (IsHandleCreated && !IsDisposed)
         {
             BeginInvoke(() =>

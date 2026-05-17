@@ -1,44 +1,38 @@
 using System.Runtime.Versioning;
 using System.Windows.Forms;
+using Camm.Localization;
 
 namespace Camm.Wizard;
 
 [SupportedOSPlatform("windows")]
 public sealed class ReadyPage : UserControl, IWizardPage
 {
-    private const string HeadingText = "Ready to install";
-    private static string NoteText() =>
-        "Clicking Install will prompt for administrator permission. " +
-        "You can change the update channel later from " +
-        "Windows Settings → Apps → Installed Apps → " +
-        $"{CammHost.Manifest.DisplayName} → Modify, or by re-running " +
-        "this installer.";
-
     private readonly Label _note;
     private readonly Label _summary;
     private string _spokenSummary = string.Empty;
 
-    public string Title => "Ready to install";
+    public string Title => Strings.Get("Wizard.Ready.Title");
     public bool CanGoNext => true;
     public Control? InitialFocusControl => null;
-    public string NextButtonText => "&Install";
+    public string NextButtonText => Strings.Get("Wizard.Buttons.Install");
     public event EventHandler? CanGoNextChanged { add { } remove { } }
     public event EventHandler? AdvanceRequested { add { } remove { } }
 
     public string AnnouncementText =>
-        HeadingText + ". " + _spokenSummary + " " + _note.Text;
+        Strings.Get("Wizard.Ready.Heading") + ". " + _spokenSummary + " " + _note.Text;
 
     public ReadyPage()
     {
         Dock = DockStyle.Fill;
 
+        var headingText = Strings.Get("Wizard.Ready.Heading");
         var heading = new Label
         {
-            Text = HeadingText,
+            Text = headingText,
             Font = new System.Drawing.Font("Segoe UI", 14F, System.Drawing.FontStyle.Bold),
             AutoSize = true,
             Location = new System.Drawing.Point(24, 24),
-            AccessibleName = HeadingText,
+            AccessibleName = headingText,
             AccessibleRole = AccessibleRole.StaticText,
         };
 
@@ -53,7 +47,7 @@ public sealed class ReadyPage : UserControl, IWizardPage
             AccessibleRole = AccessibleRole.StaticText,
         };
 
-        var noteText = NoteText();
+        var noteText = Strings.Get("Wizard.Ready.Note");
         _note = new Label
         {
             Text = noteText,
@@ -76,11 +70,10 @@ public sealed class ReadyPage : UserControl, IWizardPage
         // naturally end-to-end.
         var dir = Installer.DefaultInstallDir;
         var channel = context.SelectedChannel;
-        _summary.Text =
-            "Install location: " + dir + "\r\n" +
-            "Update channel: " + channel;
-        _summary.AccessibleName =
-            "Install location " + dir + ". Update channel " + channel + ".";
+        var locationLine = Strings.Get("Wizard.Ready.SummaryInstallLocation");
+        var channelLine = Strings.Get("Wizard.Ready.SummaryUpdateChannel") + channel;
+        _summary.Text = locationLine + "\r\n" + channelLine;
+        _summary.AccessibleName = locationLine + ". " + channelLine + ".";
         _spokenSummary = _summary.AccessibleName;
     }
 

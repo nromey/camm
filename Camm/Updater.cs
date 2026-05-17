@@ -1,3 +1,5 @@
+using Camm.Localization;
+
 namespace Camm;
 
 // Pulls down a release from GitHub and applies it locally.
@@ -45,7 +47,8 @@ public sealed class Updater
             return UpdateResult.NothingToDo;
         }
 
-        _speak($"Updating to version {release.Version}.");
+        _speak(Strings.Get("Speech.UpdateToVersionPrefix") + release.Version +
+            Strings.Get("Speech.UpdateToVersionSuffix"));
         _log($"Staging launcher self-update from {launcherAsset.Name}.");
         await StageLauncherUpdateAsync(launcherAsset, ct).ConfigureAwait(false);
         return UpdateResult.LauncherStagedOnly;

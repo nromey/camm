@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Camm.Localization;
 using Camm.Speech;
 using Camm.Wizard;
 using DavyKager;
@@ -262,10 +263,8 @@ public static class CammHost
 
         if (string.IsNullOrEmpty(gameExePath) || !File.Exists(gameExePath))
         {
-            var msg = $"Could not find {manifest.TargetGameDisplayName} at {gameExePath ?? "(null)"}. " +
-                      $"If {manifest.TargetGameLauncherName} is installed somewhere non-default, run the launcher via " +
-                      $"{manifest.TargetGameLauncherName}'s Play button (the IFEO redirect will pass the right path).";
-            Console.Error.WriteLine(msg);
+            var msg = Strings.Get("Speech.GameNotFound");
+            Console.Error.WriteLine($"{msg} (resolved path: {gameExePath ?? "(null)"})");
             accessibleOutput.Speak(msg);
             return 1;
         }
@@ -311,9 +310,7 @@ public static class CammHost
         }
         else
         {
-            accessibleOutput.Speak(
-                $"Could not focus {manifest.TargetGameDisplayName}. " +
-                "Press Alt+Tab to switch to the game window.");
+            accessibleOutput.Speak(Strings.Get("Speech.ForegroundFailed"));
         }
 
         // ---- Wait for the game log to appear, then start tailing ----
@@ -339,7 +336,7 @@ public static class CammHost
             }
             else if (DateTime.UtcNow - startupStart > startupTimeout)
             {
-                var msg = $"{manifest.TargetGameDisplayName} did not start within 2 minutes.";
+                var msg = Strings.Get("Speech.GameStartupTimeout");
                 Console.Error.WriteLine(msg);
                 accessibleOutput.Speak(msg);
                 return 2;
@@ -436,17 +433,16 @@ public static class CammHost
                 configSettings.Save(LauncherSettings.DefaultPath);
                 log($"Update channel saved: {choice}");
                 Dialogs.ShowInfo(
-                    $"{manifest.DisplayName} — Settings Saved",
-                    $"Update channel is now: {choice}\n\n" +
-                    "Click OK to finish. The new setting takes effect on " +
-                    $"the next launch of {manifest.TargetGameDisplayName} through the access mod.");
+                    Strings.Get("Settings.SavedTitle"),
+                    Strings.Get("Settings.SavedBodyPrefix") + choice +
+                    Strings.Get("Settings.SavedBodySuffix"));
             }
             catch (Exception ex)
             {
                 log($"Failed to save settings: {ex.Message}");
                 Dialogs.ShowError(
-                    $"{manifest.DisplayName} — Settings Error",
-                    $"Could not save settings: {ex.Message}");
+                    Strings.Get("Settings.ErrorTitle"),
+                    Strings.Get("Settings.ErrorPrefix") + ex.Message);
             }
         }
         else
@@ -476,8 +472,7 @@ public static class CammHost
 
         if (readOk && !installed)
         {
-            speak($"{manifest.DisplayName} is not installed. Starting install. " +
-                  "Click Yes on the User Account Control prompt to continue.");
+            speak(Strings.Get("Speech.InstallStarting"));
             Installer.Install(log, speak);
             return 0;
         }
@@ -501,19 +496,23 @@ public static class CammHost
         const int ID_SETTINGS = 103;
         const int ID_EXIT = 104;
         var choice = Dialogs.ShowChoice(
-            title: $"{manifest.DisplayName} — Already Installed",
-            mainInstruction: $"{manifest.DisplayName} is already installed. What would you like to do?",
-            content: "Installed at: " + Installer.DefaultInstallDir,
+            title: Strings.Get("AlreadyInstalled.Title"),
+            mainInstruction: Strings.Get("AlreadyInstalled.Instruction"),
+            content: Strings.Get("AlreadyInstalled.ContentPrefix") + Installer.DefaultInstallDir,
             choices: new[]
             {
-                new Dialogs.ChoiceButton(ID_REINSTALL, "Reinstall / update",
-                    "Overwrite existing files with this version. Prompts for administrator permission (UAC)."),
-                new Dialogs.ChoiceButton(ID_UNINSTALL, $"Uninstall {manifest.DisplayName}",
-                    $"Remove {manifest.DisplayName} from this computer. Prompts for administrator permission (UAC)."),
-                new Dialogs.ChoiceButton(ID_SETTINGS, "Change update channel only",
-                    "Open the update channel picker without reinstalling. No UAC needed."),
-                new Dialogs.ChoiceButton(ID_EXIT, "Exit",
-                    "Close without making any changes."),
+                new Dialogs.ChoiceButton(ID_REINSTALL,
+                    Strings.Get("AlreadyInstalled.Reinstall.Heading"),
+                    Strings.Get("AlreadyInstalled.Reinstall.Note")),
+                new Dialogs.ChoiceButton(ID_UNINSTALL,
+                    Strings.Get("AlreadyInstalled.Uninstall.Heading"),
+                    Strings.Get("AlreadyInstalled.Uninstall.Note")),
+                new Dialogs.ChoiceButton(ID_SETTINGS,
+                    Strings.Get("AlreadyInstalled.Settings.Heading"),
+                    Strings.Get("AlreadyInstalled.Settings.Note")),
+                new Dialogs.ChoiceButton(ID_EXIT,
+                    Strings.Get("AlreadyInstalled.Exit.Heading"),
+                    Strings.Get("AlreadyInstalled.Exit.Note")),
             },
             defaultChoiceId: ID_REINSTALL);
 
@@ -538,9 +537,9 @@ public static class CammHost
                     }
                     catch (Exception ex) { log($"Save failed: {ex.Message}"); }
                     Dialogs.ShowInfo(
-                        $"{manifest.DisplayName} — Settings Saved",
-                        $"Update channel is now: {newChan}\n\n" +
-                        $"The new setting takes effect next time {manifest.TargetGameDisplayName} launches.");
+                        Strings.Get("Settings.SavedTitle"),
+                        Strings.Get("Settings.SavedBodyPrefix") + newChan +
+                        Strings.Get("Settings.SavedFromAlreadyInstalledBodySuffix"));
                 }
                 else
                 {

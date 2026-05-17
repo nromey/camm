@@ -1,34 +1,27 @@
 using System.Runtime.Versioning;
 using System.Windows.Forms;
+using Camm.Localization;
 
 namespace Camm.Wizard;
 
 [SupportedOSPlatform("windows")]
 public sealed class WelcomePage : UserControl, IWizardPage
 {
-    private static string HeadingText() =>
-        $"Install {CammHost.Manifest.DisplayName}";
-
-    private static string BodyText() =>
-        "This installer will copy the launcher to Program Files " +
-        $"and register {CammHost.Manifest.DisplayName} with Windows.\r\n\r\n" +
-        "Windows will prompt for administrator permission later " +
-        "in this installer.";
-
-    private static string SubheadText() =>
-        $"by {CammHost.Manifest.Publisher}, version " + SemVer.Current();
-
     private readonly Label _subhead;
     private bool _subheadVisible;
 
-    public string Title => "Welcome";
+    public string Title => Strings.Get("Wizard.Welcome.Title");
     public bool CanGoNext => true;
     public string AnnouncementText
     {
         get
         {
-            var sub = _subheadVisible ? SubheadText() + ". " : "";
-            return HeadingText() + ". " + sub + BodyText();
+            var heading = Strings.Get("Wizard.Welcome.Heading");
+            var body = Strings.Get("Wizard.Welcome.Body");
+            var sub = _subheadVisible
+                ? Strings.Get("Wizard.Welcome.Subhead") + ". "
+                : "";
+            return heading + ". " + sub + body;
         }
     }
 
@@ -36,9 +29,7 @@ public sealed class WelcomePage : UserControl, IWizardPage
     // input control to focus, so Next is the right initial target.
     public Control? InitialFocusControl => null;
 
-    // No-op accessors: this page never raises these events, but the
-    // interface requires the members. Empty add/remove satisfies the
-    // contract without triggering CS0067 on an unraised field event.
+    // No-op accessors: this page never raises these events.
     public event EventHandler? CanGoNextChanged { add { } remove { } }
     public event EventHandler? AdvanceRequested { add { } remove { } }
 
@@ -46,7 +37,7 @@ public sealed class WelcomePage : UserControl, IWizardPage
     {
         Dock = DockStyle.Fill;
 
-        var headingText = HeadingText();
+        var headingText = Strings.Get("Wizard.Welcome.Heading");
         var heading = new Label
         {
             Text = headingText,
@@ -61,7 +52,7 @@ public sealed class WelcomePage : UserControl, IWizardPage
         // genuine first install — hidden on reinstall/update because
         // those users already know who built this. OnEnter flips
         // _subhead.Visible based on context.IsFirstInstall.
-        var subText = SubheadText();
+        var subText = Strings.Get("Wizard.Welcome.Subhead");
         _subhead = new Label
         {
             Text = subText,
@@ -74,7 +65,7 @@ public sealed class WelcomePage : UserControl, IWizardPage
             Visible = false,
         };
 
-        var bodyText = BodyText();
+        var bodyText = Strings.Get("Wizard.Welcome.Body");
         var body = new Label
         {
             Text = bodyText,

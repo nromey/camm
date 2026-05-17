@@ -1,4 +1,5 @@
 using System.Runtime.Versioning;
+using Camm.Localization;
 
 namespace Camm;
 
@@ -7,8 +8,9 @@ namespace Camm;
 // --config entry point and by the Already-Installed dialog's "Change
 // update channel" branch.
 //
-// Title + content come from CammHost.Manifest at call time so the
-// dialog reads "<DisplayName> — Update Channel" naturally.
+// All visible strings come from the locale catalog (see
+// Camm/lang/en.json); the title and dialog content read DisplayName
+// from the manifest via the substitution layer in Strings.Get.
 [SupportedOSPlatform("windows")]
 public static class ChannelPickerDialog
 {
@@ -31,21 +33,25 @@ public static class ChannelPickerDialog
             _ => "Stable",
         };
 
-        var displayName = CammHost.Manifest.DisplayName;
         var choice = Dialogs.ShowChoice(
-            title: $"{displayName} — Update Channel",
-            mainInstruction: $"Choose how {displayName} checks for updates",
-            content: $"Current update channel: {currentLabel}",
+            title: Strings.Get("ChannelPicker.Title"),
+            mainInstruction: Strings.Get("ChannelPicker.Instruction"),
+            content: Strings.Get("ChannelPicker.CurrentLabel") + currentLabel,
             choices: new[]
             {
-                new Dialogs.ChoiceButton(ID_STABLE, "Stable (recommended)",
-                    "Tested releases only. Safest, gets new features after they've been validated."),
-                new Dialogs.ChoiceButton(ID_LATEST, "Latest",
-                    "Includes pre-release builds. Newer features but may be rougher. Good for testers."),
-                new Dialogs.ChoiceButton(ID_OFF, "Off (not recommended)",
-                    "Never check for updates. You will miss bug fixes and new screen support."),
-                new Dialogs.ChoiceButton(ID_KEEP, "Keep current setting",
-                    $"Leave the channel as {currentLabel} and close this dialog."),
+                new Dialogs.ChoiceButton(ID_STABLE,
+                    Strings.Get("ChannelPicker.Stable.Heading"),
+                    Strings.Get("ChannelPicker.Stable.Note")),
+                new Dialogs.ChoiceButton(ID_LATEST,
+                    Strings.Get("ChannelPicker.Latest.Heading"),
+                    Strings.Get("ChannelPicker.Latest.Note")),
+                new Dialogs.ChoiceButton(ID_OFF,
+                    Strings.Get("ChannelPicker.Off.Heading"),
+                    Strings.Get("ChannelPicker.Off.Note")),
+                new Dialogs.ChoiceButton(ID_KEEP,
+                    Strings.Get("ChannelPicker.Keep.HeadingPrefix"),
+                    Strings.Get("ChannelPicker.Keep.NotePrefix") + currentLabel +
+                    Strings.Get("ChannelPicker.Keep.NoteSuffix")),
             },
             defaultChoiceId: ID_STABLE);
 
@@ -54,7 +60,7 @@ public static class ChannelPickerDialog
             ID_STABLE => UpdateChannel.Stable,
             ID_LATEST => UpdateChannel.Latest,
             ID_OFF => UpdateChannel.Off,
-            _ => null,  // Keep current (or Esc)
+            _ => null,
         };
     }
 }

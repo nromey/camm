@@ -62,4 +62,15 @@
     <Compile Include="..\third_party\tolk\dotnet\Tolk.cs" Link="Tolk\Tolk.cs" />
   </ItemGroup>
 
+  <!-- Embed the locale catalog (lang/en.json) inside Camm.dll so the
+       English baseline is always available regardless of how the
+       consuming launcher is deployed. Loose lang/<culture>.json files
+       next to the consuming exe override individual keys at runtime
+       (see Camm/Localization/Strings.cs). -->
+  <ItemGroup>
+    <EmbeddedResource Include="lang\*.json">
+      <LogicalName>lang/%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
 </Project>

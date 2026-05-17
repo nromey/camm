@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.Versioning;
+using Camm.Localization;
 
 namespace Camm;
 
@@ -180,24 +181,17 @@ public static class Installer
             const int ID_UNINSTALL = 1;
             const int ID_CANCEL = 2;
             var confirm = Dialogs.ShowChoice(
-                title: $"{manifest.DisplayName} — Uninstall",
-                mainInstruction: $"Uninstall {manifest.DisplayName} from this computer?",
-                content:
-                    "This will:\n" +
-                    $"  • Remove the {manifest.TargetGameLauncherName}-launch redirect " +
-                        $"({manifest.TargetGameDisplayName} will launch directly again)\n" +
-                    $"  • Remove the {manifest.DisplayName} mod from " +
-                        $"{manifest.TargetGameDisplayName}'s mod folder\n" +
-                    "  • Remove the Apps & Features registration\n" +
-                    "  • Leave installed files at " + DefaultInstallDir + " in place\n" +
-                    "    (delete that folder manually if you want a complete cleanup)\n\n" +
-                    "Clicking Uninstall will prompt for administrator permission (Windows UAC).",
+                title: Strings.Get("Installer.Uninstall.ConfirmTitle"),
+                mainInstruction: Strings.Get("Installer.Uninstall.ConfirmInstruction"),
+                content: Strings.Get("Installer.Uninstall.ConfirmContent"),
                 choices: new[]
                 {
-                    new Dialogs.ChoiceButton(ID_UNINSTALL, $"Uninstall {manifest.DisplayName}",
-                        "Remove the redirect, mod files, and Apps & Features entry."),
-                    new Dialogs.ChoiceButton(ID_CANCEL, "Cancel",
-                        "Exit without making any changes."),
+                    new Dialogs.ChoiceButton(ID_UNINSTALL,
+                        Strings.Get("Installer.Uninstall.ConfirmButton.Heading"),
+                        Strings.Get("Installer.Uninstall.ConfirmButton.Note")),
+                    new Dialogs.ChoiceButton(ID_CANCEL,
+                        Strings.Get("Installer.Uninstall.CancelButton.Heading"),
+                        Strings.Get("Installer.Uninstall.CancelButton.Note")),
                 },
                 defaultChoiceId: ID_CANCEL,
                 warningIcon: true);
@@ -320,15 +314,8 @@ public static class Installer
               "    (delete that folder manually to finish cleanup)\n";
 
         Dialogs.ShowInfo(
-            $"{manifest.DisplayName} — Uninstall Complete",
-            $"{manifest.DisplayName} has been uninstalled.\n\n" +
-            $"{manifest.TargetGameDisplayName} will now launch directly from " +
-            $"{manifest.TargetGameLauncherName} again — the access mod will " +
-            "not activate.\n\n" +
-            "Cleaned up:\n" +
-            $"  • {manifest.TargetGameLauncherName} launch redirect (IFEO)\n" +
-            "  • Apps & Features registration\n" +
-            $"  • Mod files in {manifest.TargetGameDisplayName}'s mod folder\n" +
+            Strings.Get("Installer.Uninstall.CompleteTitle"),
+            Strings.Get("Installer.Uninstall.CompleteBody") + "\n" +
             (installDirCleaned ? "  • Launcher files at " + DefaultInstallDir + "\n" : "") +
             leftInPlaceLine + "\n" +
             "Click OK to finish.");

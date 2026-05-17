@@ -1,5 +1,6 @@
 using System.Runtime.Versioning;
 using System.Windows.Forms;
+using Camm.Localization;
 using DavyKager;
 
 namespace Camm.Wizard;
@@ -69,33 +70,36 @@ public sealed class InstallWizardForm : Form
         // reachable when enabled on page 2+). Next gets the lowest
         // index because it's the primary action on every page; Cancel
         // is always second so users can dismiss quickly from keyboard.
+        var cancelText = Strings.Get("Wizard.Buttons.Cancel");
+        var nextText = Strings.Get("Wizard.Buttons.Next");
+        var backText = Strings.Get("Wizard.Buttons.Back");
         _btnCancel = new Button
         {
-            Text = "&Cancel",
+            Text = cancelText,
             Width = 90,
             Top = 10,
             Left = 450,
             TabIndex = 1,
             DialogResult = DialogResult.Cancel,
-            AccessibleName = "Cancel",
+            AccessibleName = cancelText.Replace("&", ""),
         };
         _btnNext = new Button
         {
-            Text = "&Next",
+            Text = nextText,
             Width = 90,
             Top = 10,
             Left = 354,
             TabIndex = 0,
-            AccessibleName = "Next",
+            AccessibleName = nextText.Replace("&", ""),
         };
         _btnBack = new Button
         {
-            Text = "&Back",
+            Text = backText,
             Width = 90,
             Top = 10,
             Left = 258,
             TabIndex = 2,
-            AccessibleName = "Back",
+            AccessibleName = backText.Replace("&", ""),
         };
         buttonBar.Controls.Add(_btnBack);
         buttonBar.Controls.Add(_btnNext);
@@ -179,17 +183,17 @@ public sealed class InstallWizardForm : Form
         const int ID_CONTINUE = 1;
         const int ID_CANCEL = 2;
         var choice = Dialogs.ShowChoice(
-            title: "Cancel installation?",
-            mainInstruction: "Are you sure you want to cancel?",
-            content:
-                "Nothing has been installed yet. You can come back to " +
-                "the installer any time.",
+            title: Strings.Get("Wizard.CancelConfirm.Title"),
+            mainInstruction: Strings.Get("Wizard.CancelConfirm.Instruction"),
+            content: Strings.Get("Wizard.CancelConfirm.Content"),
             choices: new[]
             {
-                new Dialogs.ChoiceButton(ID_CONTINUE, "Continue installing",
-                    "Return to the wizard."),
-                new Dialogs.ChoiceButton(ID_CANCEL, "Yes, cancel and exit",
-                    "Close the installer without making any changes."),
+                new Dialogs.ChoiceButton(ID_CONTINUE,
+                    Strings.Get("Wizard.CancelConfirm.Continue.Heading"),
+                    Strings.Get("Wizard.CancelConfirm.Continue.Note")),
+                new Dialogs.ChoiceButton(ID_CANCEL,
+                    Strings.Get("Wizard.CancelConfirm.Cancel.Heading"),
+                    Strings.Get("Wizard.CancelConfirm.Cancel.Note")),
             },
             defaultChoiceId: ID_CONTINUE,
             warningIcon: true,

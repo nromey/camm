@@ -1,5 +1,6 @@
 using System.Runtime.Versioning;
 using System.Windows.Forms;
+using Camm.Localization;
 using DavyKager;
 
 namespace Camm.Wizard;
@@ -7,59 +8,52 @@ namespace Camm.Wizard;
 [SupportedOSPlatform("windows")]
 public sealed class ChannelPage : UserControl, IWizardPage
 {
-    private const string HeadingText = "Update channel";
-
-    // Per-channel description shown live below the combobox AND spoken
-    // through Tolk when the selection changes. Step 7 of the extraction
-    // plan moves these into the locale catalog (lang/en.json) so the
-    // wording can be translated.
-    private static readonly Dictionary<UpdateChannel, string> Descriptions = new()
-    {
-        [UpdateChannel.Stable] =
-            "Tested releases only. Safest; gets new features after they've been validated.",
-        [UpdateChannel.Latest] =
-            "Includes pre-release builds. Newer features but may be rougher. Good for testers.",
-        [UpdateChannel.Off] =
-            "Never check for updates. You will miss bug fixes and new screen support.",
-    };
-
     private readonly ComboBox _combo;
     private readonly Label _description;
 
-    public string Title => "Update channel";
+    public string Title => Strings.Get("Wizard.Channel.Title");
     public bool CanGoNext => true;
     public Control? InitialFocusControl => _combo;
     public event EventHandler? CanGoNextChanged { add { } remove { } }
     public event EventHandler? AdvanceRequested { add { } remove { } }
 
     public string AnnouncementText =>
-        HeadingText + ". Currently selected: " + SelectedChannel + ". " +
-        Descriptions[SelectedChannel];
+        Strings.Get("Wizard.Channel.AnnouncementPrefix") +
+        SelectedChannel + ". " + DescriptionFor(SelectedChannel);
 
     private UpdateChannel SelectedChannel =>
         _combo.SelectedItem is UpdateChannel ch ? ch : UpdateChannel.Stable;
+
+    private static string DescriptionFor(UpdateChannel channel) => channel switch
+    {
+        UpdateChannel.Stable => Strings.Get("Wizard.Channel.Stable.Description"),
+        UpdateChannel.Latest => Strings.Get("Wizard.Channel.Latest.Description"),
+        UpdateChannel.Off => Strings.Get("Wizard.Channel.Off.Description"),
+        _ => "",
+    };
 
     public ChannelPage()
     {
         Dock = DockStyle.Fill;
 
+        var headingText = Strings.Get("Wizard.Channel.Heading");
         var heading = new Label
         {
-            Text = HeadingText,
+            Text = headingText,
             Font = new System.Drawing.Font("Segoe UI", 14F, System.Drawing.FontStyle.Bold),
             AutoSize = true,
             Location = new System.Drawing.Point(24, 24),
-            AccessibleName = HeadingText,
+            AccessibleName = headingText,
             AccessibleRole = AccessibleRole.StaticText,
         };
 
-        // Mnemonic & makes Alt+U focus the combobox directly. Plain
-        // Label preceding the ComboBox is the standard WinForms
-        // "label-for-this-control" pattern; tab order puts the label
-        // last so it doesn't steal focus from Tab navigation.
+        // Mnemonic & in the label makes Alt+U focus the combobox.
+        // Plain Label preceding the ComboBox is the standard WinForms
+        // "label-for-this-control" pattern; tab order excludes the
+        // label so it doesn't steal focus from Tab navigation.
         var label = new Label
         {
-            Text = "&Update channel:",
+            Text = Strings.Get("Wizard.Channel.Label"),
             AutoSize = true,
             Location = new System.Drawing.Point(24, 80),
             TabStop = false,
@@ -67,14 +61,12 @@ public sealed class ChannelPage : UserControl, IWizardPage
 
         _combo = new ComboBox
         {
-            // DropDownList = read-only; user can only pick from items,
-            // not type free text. Eliminates a class of invalid input
-            // and gives NVDA cleaner combobox semantics.
+            // DropDownList = read-only; user can only pick from items.
             DropDownStyle = ComboBoxStyle.DropDownList,
             Location = new System.Drawing.Point(24, 105),
             Width = 200,
             TabIndex = 0,
-            AccessibleName = "Update channel",
+            AccessibleName = Strings.Get("Wizard.Channel.Heading"),
             AccessibleRole = AccessibleRole.ComboBox,
         };
         _combo.Items.Add(UpdateChannel.Stable);
@@ -83,13 +75,14 @@ public sealed class ChannelPage : UserControl, IWizardPage
         _combo.SelectedItem = UpdateChannel.Stable;
         _combo.SelectedIndexChanged += OnSelectionChanged;
 
+        var initialDesc = DescriptionFor(UpdateChannel.Stable);
         _description = new Label
         {
-            Text = Descriptions[UpdateChannel.Stable],
+            Text = initialDesc,
             AutoSize = false,
             Location = new System.Drawing.Point(24, 145),
             Size = new System.Drawing.Size(500, 100),
-            AccessibleName = Descriptions[UpdateChannel.Stable],
+            AccessibleName = initialDesc,
             AccessibleRole = AccessibleRole.StaticText,
         };
 
@@ -102,24 +95,20 @@ public sealed class ChannelPage : UserControl, IWizardPage
     private void OnSelectionChanged(object? sender, EventArgs e)
     {
         var channel = SelectedChannel;
-        var desc = Descriptions[channel];
+        var desc = DescriptionFor(channel);
         _description.Text = desc;
         _description.AccessibleName = desc;
         // Explicit "<mode>. <description>" with interrupt=true gives
-        // deterministic output regardless of NVDA verbosity settings,
-        // and arrowing fast through items cleanly cancels the previous
-        // readout instead of stacking a queue. Trade-off accepted:
-        // forgo NVDA's automatic combobox-selection announce in
-        // exchange for predictability.
+        // deterministic output regardless of NVDA verbosity settings;
+        // fast arrowing cleanly cancels the previous readout instead
+        // of stacking a queue.
         Tolk.Output(channel + ". " + desc, true);
     }
 
     public void OnEnter(InstallContext context)
     {
         // Restore previously-saved selection if user navigated Back
-        // and forward through this page. Subscribed handler does NOT
-        // re-fire on programmatic SelectedItem assignment to the same
-        // value, so we're safe from echo-speaking on entry.
+        // and forward through this page.
         _combo.SelectedItem = context.SelectedChannel;
     }
 

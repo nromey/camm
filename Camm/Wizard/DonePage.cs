@@ -1,24 +1,12 @@
 using System.Runtime.Versioning;
 using System.Windows.Forms;
+using Camm.Localization;
 
 namespace Camm.Wizard;
 
 [SupportedOSPlatform("windows")]
 public sealed class DonePage : UserControl, IWizardPage
 {
-    private const string SuccessHeading = "Install complete";
-    private const string FailureHeading = "Install failed";
-
-    private static string SuccessBody()
-    {
-        var m = CammHost.Manifest;
-        return
-            $"{m.DisplayName} is installed.\r\n\r\n" +
-            $"Launch {m.TargetGameDisplayName} from {m.TargetGameLauncherName} — " +
-            "the accessibility mod activates automatically.\r\n\r\n" +
-            $"Per-user settings live at %LocalAppData%\\{m.LocalAppDataFolderName}\\launcher.ini.";
-    }
-
     private readonly Label _heading;
     private readonly Label _body;
     private string _announcement = string.Empty;
@@ -32,7 +20,7 @@ public sealed class DonePage : UserControl, IWizardPage
     // to cancel). Finish is the only action.
     public bool ShowBackButton => false;
     public bool ShowCancelButton => false;
-    public string NextButtonText => "&Finish";
+    public string NextButtonText => Strings.Get("Wizard.Buttons.Finish");
 
     public string AnnouncementText => _announcement;
 
@@ -66,31 +54,28 @@ public sealed class DonePage : UserControl, IWizardPage
     public void OnEnter(InstallContext context)
     {
         // Variant selection happens at activation time so OnEnter can
-        // read whichever state the install actually landed in. The
-        // heading + body Labels are dynamic; AnnouncementText also
-        // tracks via _announcement so the spoken text matches what's
-        // on screen.
+        // read whichever state the install actually landed in.
         if (context.InstallError is null)
         {
-            var successBody = SuccessBody();
-            _heading.Text = SuccessHeading;
-            _heading.AccessibleName = SuccessHeading;
-            _body.Text = successBody;
-            _body.AccessibleName = successBody;
-            _announcement = SuccessHeading + ". " + successBody;
+            var heading = Strings.Get("Wizard.Done.SuccessHeading");
+            var body = Strings.Get("Wizard.Done.SuccessBody");
+            _heading.Text = heading;
+            _heading.AccessibleName = heading;
+            _body.Text = body;
+            _body.AccessibleName = body;
+            _announcement = heading + ". " + body;
         }
         else
         {
-            var bodyText =
-                "The installer could not complete.\r\n\r\n" +
-                "Reason: " + context.InstallError + "\r\n\r\n" +
-                "Nothing has been changed permanently. You can close " +
-                "this window and run the installer again to retry.";
-            _heading.Text = FailureHeading;
-            _heading.AccessibleName = FailureHeading;
-            _body.Text = bodyText;
-            _body.AccessibleName = bodyText;
-            _announcement = FailureHeading + ". " + bodyText;
+            var heading = Strings.Get("Wizard.Done.FailureHeading");
+            var body = Strings.Get("Wizard.Done.FailureBodyPrefix") +
+                       context.InstallError +
+                       Strings.Get("Wizard.Done.FailureBodySuffix");
+            _heading.Text = heading;
+            _heading.AccessibleName = heading;
+            _body.Text = body;
+            _body.AccessibleName = body;
+            _announcement = heading + ". " + body;
         }
     }
 
