@@ -74,11 +74,38 @@ docs alone, the gap shows us exactly what to add.
 >     in-game UI work. Those stay as-is; CAMM is only about the
 >     launcher / installer wrapper, if applicable.
 >
-> Report back at the end with:
->   - Your fit-assessment.
->   - What you produced (file paths, line counts).
->   - Gaps in CAMM's docs that slowed you down or made you guess.
->   - Anything you couldn't do from docs alone.
+> **Write your final report to disk** at this exact path:
+>
+>     C:\dev\camm-test-reports\rimworld-access-<YYYY-MM-DD-HHMM>.md
+>
+> (Create the `C:\dev\camm-test-reports\` directory if it doesn't
+> exist. Replace `<YYYY-MM-DD-HHMM>` with the current date and time
+> so multiple runs don't overwrite each other — e.g.
+> `rimworld-access-2026-05-17-2230.md`.)
+>
+> The report must contain, as top-level sections:
+>
+> 1. **Fit assessment.** Full text of your architectural analysis
+>    from the first task. Don't summarize — paste the analysis
+>    verbatim. This is the section the CAMM maintainer reads first.
+> 2. **What I produced.** Concrete file paths and line counts. If
+>    you didn't produce code (because the fit assessment said
+>    not to), say so explicitly here.
+> 3. **Gaps in CAMM's docs.** A numbered list of every place you
+>    had to guess, every claim CAMM made that turned out wrong or
+>    unclear, every spot where the README / CHANGELOG / source
+>    comments left you stuck. Be specific — quote the offending
+>    passage or note that no docs existed. This is the section
+>    that drives the next round of doc work.
+> 4. **Anything you couldn't do from docs alone.** What would have
+>    let you finish — a getting-started.md, a worked example for
+>    a non-launcher mod, a `camm new` scaffolding tool, something
+>    else?
+>
+> When the report is written and you've confirmed the file exists,
+> say so plainly in your final reply ("Report at
+> C:\dev\camm-test-reports\<filename>.md, N words"). Do not paste
+> the report into chat — the file is the deliverable.
 
 ---
 
