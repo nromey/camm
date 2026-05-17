@@ -10,7 +10,8 @@ maintainer can read it directly without chat-paste.
 
 ## How to run a test
 
-1. Open a fresh Claude Code session (no prior conversation).
+1. Open a fresh Claude Code session (no prior conversation — close
+   any previous test session to ensure no memory carries over).
 2. Tell it: "Read `<absolute path to the *-prompt.md file>` and do
    what it says." That's the whole handoff. Do NOT paste the
    evaluation rubric — that's for you, not for the assistant.
@@ -23,19 +24,18 @@ maintainer can read it directly without chat-paste.
 
 | Test | When to run | Prompt | Evaluation |
 |---|---|---|---|
-| **Civ V Access → CAMM** | First. Canonical "easy mode" — same paradigm as Civ VI Access, validates docs work for the obvious adoption path. | `civ-v-access-prompt.md` | `civ-v-access-evaluation.md` |
-| RimWorld Access → CAMM | Stress test. Different paradigm entirely (Harmony in-game DLL on .NET Framework 4.7.2 vs CAMM's .NET 10 launcher) — exercises CAMM's "is this the wrong tool for my mod?" guidance. | `rimworld-access-prompt.md` | `rimworld-access-evaluation.md` |
+| **Civ V Access → CAMM** | The canonical "launcher mode" test — same paradigm as Civ VI Access, validates docs work for the launcher-mode adoption path. Civ V Access has 3 install artifacts so this also exercises CAMM v0.2.0's multi-payload `ModPayloads` list. | `civ-v-access-prompt.md` | `civ-v-access-evaluation.md` |
+| **RimWorld Access → CAMM** | The "installer-only mode" stress test. RimWorld Access is a Harmony in-game DLL on .NET Framework 4.7.2 — paradigm-mismatched with CAMM's launcher model. Tests whether CAMM's installer-only mode (added in v0.2.0) is usable as a "just give me a signed installer + auto-updater" framework for non-launcher mods. | `rimworld-access-prompt.md` | `rimworld-access-evaluation.md` |
 
-Run Civ V Access first. If it succeeds cleanly, the docs are
-adopter-ready for the canonical case and we can ship the forum post.
-If it surfaces gaps, those gaps are the next round of doc work —
-fix them, re-run, iterate. RimWorld Access is only worth running
-once the easy-mode test passes.
+Both tests can run in parallel in separate Claude Code sessions if
+you want to compare results. Each writes to a different filename
+under `C:\dev\camm-test-reports\`.
 
 ## Why split prompt vs. rubric
 
 If the assistant sees the rubric ("Claude correctly identifies
-architectural mismatch and proposes hybrid use → CAMM is consumable
-but the docs need...") it gets primed to give the "good" answer
-rather than its honest take. The split keeps the test honest — the
-assistant only ever sees the task, never the success criteria.
+architectural mismatch and proposes installer-only mode → CAMM is
+adopter-ready for non-launcher mods") it gets primed to give the
+"good" answer rather than its honest take. The split keeps the
+test honest — the assistant only ever sees the task, never the
+success criteria.

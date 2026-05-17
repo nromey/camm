@@ -11,6 +11,94 @@ can consume CAMM without reading the civ-vi-access source. Pre-1.0
 means any release can break API; consumers pin to a tag SHA and
 upgrade when ready.
 
+## 0.2.0 — 2026-05-17 — Multi-payload + installer-only mode
+
+API-breaking minor bump. Two architectural changes plus a docs
+overhaul driven by the v0.1.1 AI-readability acceptance test
+(report at `civ-vi-access-2026-05-17-1735.md`).
+
+### Multi-payload `ModPayloads` list
+
+`CammModManifest`'s three singular `ModPayload*` fields collapse
+into a required `IReadOnlyList<ModPayload>`. Each entry has its own
+`Name` (embed-resource prefix), `FolderName` (dev-mode source
+discovery), `SentinelFileName`, and `DefaultDestination`. Mods that
+deploy to multiple destinations (Civ V Access: DLC package + proxy
+DLL + engine fork) now adopt CAMM cleanly — one list entry per
+destination, one `<EmbeddedResource>` glob per payload prefix.
+
+Install / update / uninstall all iterate the list. Each payload
+writes a per-install manifest at
+`%LocalAppData%\<folder>\installed-<payload-name>.json` listing
+every file it deployed. Uninstall reads each manifest and removes
+exactly those files — safe across shared destinations (e.g. dropping
+a single DLL into the game root, which mustn't be recursive-deleted).
+Empty CAMM-owned subdirectories are cleaned after; foreign content
+is preserved.
+
+Civ VI Access (the test-bed consumer) adopts with a one-element
+list, no behavioral change. Multi-root adopters get the new
+capability for free.
+
+### Installer-only mode
+
+`IfeoTargetExeNames`, `GameProcessNames`, `GameInstance`,
+`Sanitizer`, and `MarkerProtocol` are now nullable. When
+`GameInstance` is null, CAMM detects "installer-only mode" and:
+
+- Skips IFEO transparent-launch registration (the mod isn't a
+  launcher-paradigm consumer; nothing to intercept).
+- Skips log-tail speech routing (the mod's runtime is in-process,
+  not log-emitting).
+- Skips game-launch lifecycle (no `FindGameExe` / `GetLogFilePath`
+  / `LaunchAnnouncement` / `ClosedAnnouncement` to call).
+- Exits cleanly after install / update / uninstall flow completes.
+
+Use case: Harmony-based in-game DLLs (RimWorld Access pattern),
+BepInEx / MelonLoader plugins, any mod that lives inside the
+target game's process. Adopters get install wizard + Apps & Features
++ GitHub Releases auto-update + signed-release pipeline; speech
+routing stays the consumer mod's responsibility (Prism, in-process
+Tolk, whatever).
+
+### Auto-update opt-out
+
+`GitHubReleasesOwner`, `GitHubReleasesRepo`, and
+`LauncherAssetNamePattern` become nullable. Setting all three
+enables auto-update; leaving any null disables the check. Removes
+a real friction point for pre-release adopters who haven't stood up
+a GitHub Releases pipeline yet.
+
+### Docs overhaul
+
+The v0.1.1 test report identified these gaps; all addressed:
+
+- `README.md` — rewritten. The "v0.0.1, no public surface yet" text
+  is gone. New top sections explain "Is CAMM right for your mod?"
+  with launcher-mode vs. installer-only-mode guidance.
+- `docs/getting-started.md` — new, ~400-line step-by-step adoption
+  walkthrough. Covers clone-submodule → csproj boilerplate (TFM,
+  WinForms flags, `<DefaultItemExcludes>` for non-flat repos,
+  embedded-resource conventions per payload) → seam interface
+  implementations (launcher mode only) → `Program.cs` (manifest
+  + RunAsync) → smoke test. Has a "Common questions" FAQ.
+- `docs/manifest-reference.md` — new. Every `CammModManifest` field
+  documented with required/optional status, examples, and a
+  mode-selection cheat sheet.
+- Test prompts updated to reflect v0.2.0 API (multi-payload list,
+  installer-only mode reference).
+
+### Behind the scenes
+
+- `IfeoInstaller`, `WindowFocusManager`, `Updater` accept
+  null/empty manifest fields with empty-array / no-op fallbacks.
+- `AccessibleOutputHandler.OutputMessage` early-returns if
+  `Sanitizer` / `MarkerProtocol` are null (defensive — LogTailSpeaker
+  wouldn't be started in installer-only mode anyway).
+- `CammHost.RunAsync` rewritten: args dispatch is mode-agnostic;
+  the game-launch / log-tail / lifecycle-wait tail only runs when
+  `!manifest.IsInstallerOnly`.
+
 ## 0.1.1 — 2026-05-17 — Step 7: localization (LocaleCatalog + en.json)
 
 `Camm.Localization.Strings.Get(key)` looks up user-visible text in

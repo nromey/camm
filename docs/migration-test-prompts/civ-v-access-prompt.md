@@ -23,8 +23,15 @@ shape of a Civ V Access CAMM adopter should look nearly identical.
 
 Read in order:
 
-1. CAMM's `README.md` and `CHANGELOG.md`.
-2. The Civ VI Access `CivViAccess/` directory:
+1. CAMM's `README.md`, `docs/getting-started.md`, and
+   `docs/manifest-reference.md`. The README answers "is CAMM right
+   for your mod" — confirm Civ V Access falls into launcher mode (it
+   should: Lua mod + log-tail-style speech + IFEO redirect through
+   the launcher exe). `docs/getting-started.md` walks through the
+   adoption steps; `docs/manifest-reference.md` documents every
+   manifest field.
+2. CAMM's `CHANGELOG.md` (latest entry — v0.2.0).
+3. The Civ VI Access `CivViAccess/` directory:
    - `Program.cs` (the thin shim: manifest construct + RunAsync call)
    - `CivViGameInstance.cs` (implements `Camm.IGameInstance`: paths to
      the game exe and log file, launch announcement, closed
@@ -73,6 +80,19 @@ spawning a 32-bit game via DEBUG_PROCESS is fine (no DLL bitness
 mismatch within the launcher process). The IFEO redirect targets
 `CivilizationV.exe` (and any DX12 / Steam variants the existing Civ
 V Access intercepts).
+
+Multi-payload note: as of CAMM v0.2.0 the manifest's
+`ModPayloads` field is a list of `ModPayload` entries, one per
+deploy destination. Civ V Access ships **three** install artifacts
+according to its `deploy.ps1` / `installer/Core/Installer.cs`: the
+DLC payload, a proxy DLL (`lua51_Win32.dll` at the game root), and
+an engine fork DLL (in `Assets\DLC\Expansion2\`). Use three
+`ModPayload` entries — each with its own `Name` (embed prefix),
+`FolderName` (dev-mode source dir), `SentinelFileName`, and
+`DefaultDestination`. The Civ VI Access reference has a one-element
+list (`Name = "mod"`); your multi-payload csproj will need three
+`<EmbeddedResource>` globs with three different `<LogicalName>`
+prefixes.
 
 ## What you can ignore
 

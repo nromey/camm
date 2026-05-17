@@ -3,36 +3,84 @@
 **Don't show this file to the assistant running the test.** It's the
 maintainer's rubric for reading the resulting report.
 
+## Why this is the stress test
+
+RimWorld Access is a Harmony in-game DLL on .NET Framework 4.7.2
+using Prism for cross-platform screen reader integration. CAMM is
+a .NET 10 Windows launcher framework with Tolk speech routing,
+IFEO transparent-launch, and log-tail-based in-game speech relay.
+The two paradigms barely overlap. CAMM v0.2.0's
+**installer-only mode** (GameInstance = null) was added partly to
+make adoption like this possible — the launcher exe is just a
+wizard + auto-updater for the Harmony DLL + supporting files.
+
+The test checks whether:
+
+- The README's "Is CAMM right for your mod?" section successfully
+  routes a paradigm-mismatched adopter into installer-only mode.
+- The manifest-reference's "Mode-selection cheat sheet" makes it
+  obvious which fields to leave null.
+- The getting-started guide's installer-only example is usable
+  without a launcher-mode reference adopter to follow.
+- Installer-only mode actually works end-to-end (the wizard text
+  makes sense, the deploy targets the right Mods/ folder, etc.).
+
 ## What to look for in the result
 
-The output that confirms CAMM is genuinely consumable:
+A genuinely consumable installer-only mode produces a report like:
 
-- The assistant identifies the architectural mismatch correctly (CAMM
-  is a launcher-process framework; RimWorld Access is an in-process
-  DLL). Bonus points for proposing a hybrid use (CAMM as installer
-  shell wrapping a `Mods/`-folder copy plus auto-update, even though
-  Tolk and IFEO don't apply).
-- The assistant builds the manifest correctly — every required field
-  filled, including the four implementations (`Sanitizer`,
-  `MarkerProtocol`, `GameInstance`, plus the standard scalar fields).
-- The "gaps" section names specific docs we're missing (e.g., "CAMM's
-  README doesn't explain that ModPayloadFolderName is the *dev-mode
-  source* dir, not the deployed-on-the-user's-machine dir" or "no
-  guidance on what Tolk does for cross-platform — does it work on
-  macOS / Linux at all?").
-- The assistant doesn't quietly invent fields, fake APIs, or "make it
-  work" by copy-pasting from civ-vi-access without understanding.
+- "Fit assessment": confirms installer-only mode applies, identifies
+  the four launcher-mode fields to leave null, calls out RimWorld's
+  mod-folder convention (Steam Workshop vs. user-folder Mods/).
+- "What I produced": a small launcher project (probably < 100 LOC)
+  with `Program.cs` + `.csproj` + `app.manifest`. No `IGameInstance`
+  / `IMessageSanitizer` / `IScreenReaderMarkerProtocol` files.
+- "Gaps": doc-quality items, ideally < 10. Look for new gaps
+  specific to installer-only mode (the docs are written from a
+  launcher-mode-first perspective — places where the
+  installer-only path is harder to follow).
+- "Stress points specific to installer-only mode": the most
+  valuable section. Honest answers about whether CAMM's installer-
+  only mode feels coherent or feels like a half-conversion of a
+  launcher framework.
+- "Confidence": should be cautiously positive if installer-only
+  mode is solid; the report should flag any "I would not ship this"
+  items concretely.
+
+Red flags:
+
+- Assistant forces launcher-mode (tries to write an IGameInstance
+  for RimWorld even though there's no IFEO redirect possible) →
+  README's mode-selection guidance failed.
+- Assistant invents fields or APIs (Camm.HarmonyAdapter, etc.) →
+  hallucinating instead of reading docs.
+- Assistant gives up before producing code, citing "not enough
+  documentation" → installer-only mode docs aren't complete.
 
 ## How to interpret signals
 
 | Outcome | What it means for CAMM |
 |---|---|
-| Claude correctly identifies architectural mismatch and proposes hybrid use | CAMM is consumable but the docs need to explain what kind of mod CAMM fits |
-| Claude tries to force a full conversion and produces broken code | CAMM's README needs a "is CAMM right for your mod?" section up top |
-| Claude completes a working hybrid build | CAMM is in great shape; docs cover the main path |
-| Claude can't read CAMM's surface and gets stuck early | Need a `getting-started.md` walking through the four implementations + manifest construction |
+| Working installer-only adopter, < 10 doc gaps, sensible confidence | Installer-only mode is adopter-ready; ship the forum post mentioning it explicitly |
+| Working adopter, but stress-points section finds awkward mode-mismatch | Localize the wizard strings for installer-only adopters (different `Wizard.Done.SuccessBody` etc.); minor mode-specific copy work |
+| Adopter doesn't build OR assistant says "doesn't apply" but evidence suggests it should | Mode-selection guidance + installer-only example missing from docs |
+| Assistant explicitly says "doesn't apply, here's why" with thoughtful reasons | Useful negative result — document what CAMM is *not* for, more clearly |
 
-Either way the result of this test goes back into CAMM's docs.
+## After running
+
+The stress-points section drives the docs work for installer-only
+adopters. Examples of fixes that might land:
+
+- Add an installer-only worked example to `docs/getting-started.md`
+  (currently it's launcher-mode-first with "for installer-only
+  adopter you also fill in" stuck mid-flow).
+- Add a "Wizard text for installer-only mods" subsection to
+  `docs/manifest-reference.md` — explain why "Launch X from Steam"
+  shows even though the adopter doesn't run their game through
+  CAMM.
+- Possibly: locale-catalog keys that select between launcher-mode
+  and installer-only-mode wording (`Wizard.Done.SuccessBody.Launcher`
+  vs `Wizard.Done.SuccessBody.InstallerOnly`).
 
 ## Cross-references
 
