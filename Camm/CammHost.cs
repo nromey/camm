@@ -11,15 +11,23 @@ namespace Camm;
 //
 //     return await CammHost.RunAsync(args, BuildManifest());
 //
-// RunAsync handles: pending self-update, Tolk bootstrap, args
-// dispatch (--install / --uninstall / --version / --config /
-// --install-from-wizard / --wizard-test), transparent invocation
-// detection, bare-exe install trigger, Already-Installed dialog,
-// update check + apply, game launch via the configured
-// IGameInstance, log-tail speech, lifecycle watch.
+// RunAsync handles two operating modes selected by the manifest:
 //
-// Per-game knowledge enters via CammModManifest's IGameInstance,
-// IMessageSanitizer, IScreenReaderMarkerProtocol fields.
+//   Launcher mode (GameInstance non-null) — full chameleon launcher:
+//     pending self-update, payload rehydrate, Tolk bootstrap, args
+//     dispatch, transparent-invocation detection, bare-exe install
+//     trigger, Already-Installed dialog, update check, game launch
+//     via the configured IGameInstance, log-tail speech, lifecycle
+//     watch, closed announcement.
+//
+//   Installer-only mode (GameInstance null) — install / update /
+//     uninstall only. Used by mods whose runtime lives inside the
+//     game's process (Harmony DLL, BepInEx plugin, etc.) where
+//     there's no launcher exe to IFEO-redirect through. CAMM exits
+//     cleanly after handling args + install + update, never trying
+//     to spawn the game.
+//
+// Per-mod knowledge enters via CammModManifest's fields.
 public static class CammHost
 {
     private static CammModManifest? _manifest;
@@ -42,36 +50,44 @@ public static class CammHost
     }
 
     // Unified entry point. Wraps the entire launcher lifecycle.
-    // Returns process exit code: 0 on normal completion, non-zero
-    // on failure conditions specific to the mode (game-not-found,
+    // Returns process exit code: 0 on normal completion, non-zero on
+    // failure conditions specific to the mode (game-not-found,
     // game-startup-timeout, install-failed, etc.).
     public static async Task<int> RunAsync(string[] args, CammModManifest manifest)
     {
         Initialize(manifest);
         Logger.StartSession("startup");
+        if (manifest.ModPayloads is null || manifest.ModPayloads.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "CammModManifest.ModPayloads must contain at least one ModPayload.");
+        }
 
         try { Console.Title = $"{manifest.DisplayName} Launcher"; }
         catch { /* console may be redirected */ }
 
-        // Step 1: complete any pending self-update from a previous
-        // run. If a swap happens, we re-launch ourselves and
-        // Environment.Exit, so anything below this line runs against
-        // the newest launcher version.
+        // Step 1: pending self-update.
         Logger.Info("Step 1: ApplyPendingSelfUpdateAndRelaunchIfNeeded");
         Updater.ApplyPendingSelfUpdateAndRelaunchIfNeeded();
 
-        // Step 1b: if a self-update just happened (or the marker was
-        // left by the previous launcher version's update flow), the
-        // deployed mod is stale relative to our newly-current
-        // version. Rehydrate from embedded resources, then delete the
-        // marker.
+        // Step 1b: rehydrate each payload from embedded resources if
+        // the redeploy marker is present (self-update applied).
         if (File.Exists(Updater.RedeployMarkerPath))
         {
-            Logger.Info("Step 1b: redeploy-mod marker present, rehydrating mod from embedded resources");
+            Logger.Info("Step 1b: redeploy-mod marker present, rehydrating payloads");
             try
             {
-                var count = ModFiles.ExtractTo(ModDeployer.DefaultDestination);
-                Logger.Info($"  Rehydrated {count} mod files to {ModDeployer.DefaultDestination}");
+                foreach (var payload in manifest.ModPayloads)
+                {
+                    var prior = ModFiles.ReadManifestForPayload(payload);
+                    if (prior is not null)
+                    {
+                        ModFiles.RemoveByManifest(prior);
+                        Logger.Info($"  Cleaned prior install of payload '{payload.Name}' ({prior.Files.Count} files)");
+                    }
+                    var installed = ModFiles.ExtractTo(payload);
+                    Logger.Info($"  Rehydrated payload '{payload.Name}': {installed.Files.Count} files to {installed.DestinationRoot}");
+                }
                 File.Delete(Updater.RedeployMarkerPath);
             }
             catch (Exception ex)
@@ -80,7 +96,7 @@ public static class CammHost
             }
         }
 
-        // Step 2: make Tolk's native sidecars loadable by P/Invoke.
+        // Step 2: Tolk bootstrap.
         Logger.Info("Step 2: TolkBootstrap.PrepareRuntime");
         try { TolkBootstrap.PrepareRuntime(); Logger.Info("  PrepareRuntime returned"); }
         catch (Exception ex) { Logger.Exception("PrepareRuntime threw", ex); throw; }
@@ -90,7 +106,6 @@ public static class CammHost
         try
         {
             accessibleOutput = new AccessibleOutputHandler();
-            Logger.Info("  AccessibleOutputHandler constructed");
             try
             {
                 var reader = Tolk.DetectScreenReader();
@@ -118,27 +133,12 @@ public static class CammHost
             catch (Exception ex) { Logger.Exception("Speak threw", ex); }
         }
 
-        // ---- Args dispatch ----
+        // ---- Args dispatch (mode-agnostic) ----
 
-        if (HasFlag(args, "--install"))
-        {
-            Installer.Install(Log, Speak);
-            return 0;
-        }
-        if (HasFlag(args, "--uninstall"))
-        {
-            Installer.Uninstall(Log, Speak);
-            return 0;
-        }
-        if (HasFlag(args, "--version") || HasFlag(args, "--about"))
-        {
-            PrintAbout(Speak);
-            return 0;
-        }
-        if (HasFlag(args, "--config"))
-        {
-            return DoConfig(Log);
-        }
+        if (HasFlag(args, "--install")) { Installer.Install(Log, Speak); return 0; }
+        if (HasFlag(args, "--uninstall")) { Installer.Uninstall(Log, Speak); return 0; }
+        if (HasFlag(args, "--version") || HasFlag(args, "--about")) { PrintAbout(Speak); return 0; }
+        if (HasFlag(args, "--config")) { return DoConfig(Log); }
         if (HasFlag(args, "--wizard-test"))
         {
             if (OperatingSystem.IsWindows())
@@ -151,11 +151,7 @@ public static class CammHost
         }
         if (HasFlag(args, "--install-from-wizard"))
         {
-            try
-            {
-                Installer.ApplyInstall(Log, Speak);
-                return 0;
-            }
+            try { Installer.ApplyInstall(Log, Speak); return 0; }
             catch (Exception ex)
             {
                 Logger.Exception("ApplyInstall (--install-from-wizard) threw", ex);
@@ -163,40 +159,38 @@ public static class CammHost
             }
         }
 
-        // ---- Transparent invocation: Windows IFEO prepended us to the
-        //      game-exe launch, so args[0] is the path to the real game
-        //      binary and args[1..] are the original args Steam/shortcut
-        //      passed. ----
-        bool transparentInvocation = IfeoInstaller.TryGetTransparentInvocationTarget(
-            args, out var transparentGamePath);
-        string[] passthroughGameArgs = transparentInvocation && args.Length > 1
-            ? args[1..]
-            : Array.Empty<string>();
+        // ---- Transparent invocation (launcher mode only) ----
+        bool transparentInvocation = false;
+        string transparentGamePath = "";
+        string[] passthroughGameArgs = Array.Empty<string>();
+        if (manifest.IfeoTargetExeNames is { Length: > 0 })
+        {
+            transparentInvocation = IfeoInstaller.TryGetTransparentInvocationTarget(
+                args, out transparentGamePath);
+            if (transparentInvocation && args.Length > 1)
+            {
+                passthroughGameArgs = args[1..];
+            }
+        }
         Logger.Info($"transparentInvocation={transparentInvocation}, transparentGamePath={transparentGamePath}");
 
-        // ---- Bare-exe: no args, not in dev checkout = user double-clicked
-        //      the downloaded installer. Offer install (if not installed)
-        //      or the Already-Installed dialog. ----
-        if (args.Length == 0 && ModDeployer.FindModSourceDir() is null)
+        // ---- Dev-mode detection (any payload's source dir found?) ----
+        var devSourceDirs = ModDeployer.FindAllSourceDirs();
+        bool isDevCheckout = devSourceDirs.Values.Any(v => v is not null);
+
+        // ---- Bare-exe ----
+        if (args.Length == 0 && !isDevCheckout)
         {
             var bareExeResult = HandleBareExe(Log, Speak);
             if (bareExeResult is int code) return code;
-            // null = fall through to main launch flow (running from
-            // install dir with no args is fine).
         }
 
-        Logger.Info("Reaching main launch flow (past install/uninstall/version routing)");
+        Logger.Info("Past install/uninstall/version routing");
         Console.WriteLine($"{manifest.DisplayName} Launcher initializing...");
 
-        // ---- Update check (respects UpdateChannel = stable / latest / off) ----
-        //
-        // Skipped when running from a dev checkout. The dev launcher's
-        // version is typically ahead of any release.
+        // ---- Update check ----
         var settings = LauncherSettings.LoadOrCreate(LauncherSettings.DefaultPath);
-        var modSourceDir = ModDeployer.FindModSourceDir();
-        bool isDevCheckout = modSourceDir is not null;
-
-        if (settings.UpdateChannel != UpdateChannel.Off && !isDevCheckout)
+        if (manifest.AutoUpdateEnabled && settings.UpdateChannel != UpdateChannel.Off && !isDevCheckout)
         {
             try
             {
@@ -235,31 +229,47 @@ public static class CammHost
                 Logger.Warn(msg);
             }
         }
-
-        // ---- Dev-mode mod deploy (no-op in shipped installs) ----
-        if (modSourceDir is not null)
+        else if (!manifest.AutoUpdateEnabled)
         {
+            Logger.Info("Auto-update disabled in manifest (no GitHub releases owner/repo configured); skipping update check.");
+        }
+
+        // ---- Dev-mode payload deploy ----
+        foreach (var payload in manifest.ModPayloads)
+        {
+            var src = devSourceDirs[payload.Name];
+            if (src is null) continue;
             try
             {
-                var copied = ModDeployer.Deploy(modSourceDir, ModDeployer.DefaultDestination);
-                Console.WriteLine($"Deployed {copied} mod file(s): {modSourceDir} -> {ModDeployer.DefaultDestination}");
+                var copied = ModDeployer.Deploy(src, payload.DefaultDestination());
+                Console.WriteLine($"Deployed payload '{payload.Name}': {copied} file(s) {src} -> {payload.DefaultDestination()}");
             }
             catch (Exception ex)
             {
-                var msg = $"Mod deploy failed: {ex.Message}. Launching with whatever is currently in the mod folder.";
+                var msg = $"Payload '{payload.Name}' dev-mode deploy failed: {ex.Message}.";
                 Console.Error.WriteLine(msg);
                 accessibleOutput.Speak(msg);
             }
         }
-        else
+        if (!isDevCheckout)
         {
-            Console.WriteLine("No mod source dir found near launcher exe; using mod folder as-is.");
+            Console.WriteLine("No dev-mode source dir found near launcher exe; using installed payload as-is.");
         }
 
-        // ---- Locate game binary ----
+        // ---- Installer-only mode exits here. No game launch. ----
+        if (manifest.IsInstallerOnly)
+        {
+            Log($"{manifest.DisplayName} install / update flow complete. " +
+                "(Installer-only mode — no game-launch step.)");
+            return 0;
+        }
+
+        // ---- Launcher mode below this line. GameInstance is non-null. ----
+        var gameInstance = manifest.GameInstance!;
+
         var gameExePath = transparentInvocation
             ? transparentGamePath
-            : manifest.GameInstance.FindGameExe();
+            : gameInstance.FindGameExe();
 
         if (string.IsNullOrEmpty(gameExePath) || !File.Exists(gameExePath))
         {
@@ -269,16 +279,12 @@ public static class CammHost
             return 1;
         }
 
-        // ---- Pre-launch log size capture ----
-        // Used by LogTailSpeaker so we replay nothing from prior sessions.
-        var logFilePath = manifest.GameInstance.GetLogFilePath();
+        var logFilePath = gameInstance.GetLogFilePath();
         long preLaunchLogSize = File.Exists(logFilePath)
             ? new FileInfo(logFilePath).Length
             : 0L;
 
-        // ---- Launch announcement (per-game, first-launch-aware) ----
-        var launchAnnouncement = manifest.GameInstance.GetLaunchAnnouncement();
-        Logger.Info($"About to speak launch announcement");
+        var launchAnnouncement = gameInstance.GetLaunchAnnouncement();
         Console.WriteLine($"Launching {gameExePath}...");
         Speak(launchAnnouncement);
 
@@ -289,7 +295,6 @@ public static class CammHost
             KillAllGameProcesses();
         };
 
-        // ---- Spawn the game (IFEO-bypass) ----
         Logger.Info($"Calling ProcessLauncher.LaunchBypassingIfeo({gameExePath})");
         try
         {
@@ -302,7 +307,6 @@ public static class CammHost
             throw;
         }
 
-        // ---- Foreground handoff + follow-focus ----
         var consoleHwnd = WindowFocusManager.GetConsoleWindowHandle();
         if (WindowFocusManager.EnsureForeground(TimeSpan.FromSeconds(15)))
         {
@@ -313,7 +317,6 @@ public static class CammHost
             accessibleOutput.Speak(Strings.Get("Speech.ForegroundFailed"));
         }
 
-        // ---- Wait for the game log to appear, then start tailing ----
         Logger.Info($"Waiting for {manifest.TargetGameDisplayName} log file to appear");
         Console.WriteLine($"Waiting for {manifest.TargetGameDisplayName} log file...");
 
@@ -330,8 +333,7 @@ public static class CammHost
             }
             else if (seenAlive)
             {
-                Console.WriteLine(
-                    $"{manifest.TargetGameDisplayName} exited before creating a log file. Launcher exiting.");
+                Console.WriteLine($"{manifest.TargetGameDisplayName} exited before creating a log file. Launcher exiting.");
                 return 0;
             }
             else if (DateTime.UtcNow - startupStart > startupTimeout)
@@ -359,7 +361,7 @@ public static class CammHost
         }
 
         Console.WriteLine($"{manifest.TargetGameDisplayName} closed. Launcher exiting.");
-        accessibleOutput.Speak(manifest.GameInstance.GetClosedAnnouncement());
+        accessibleOutput.Speak(gameInstance.GetClosedAnnouncement());
         return 0;
     }
 
@@ -394,10 +396,23 @@ public static class CammHost
         {
             try
             {
-                var reg = IfeoInstaller.GetRegisteredLauncherPath();
-                if (reg is not null)
+                if (manifest.IfeoTargetExeNames is { Length: > 0 })
                 {
-                    installState = $"installed ({manifest.TargetGameLauncherName} routes through {reg.Trim('"')})";
+                    var reg = IfeoInstaller.GetRegisteredLauncherPath();
+                    if (reg is not null)
+                    {
+                        installState = $"installed ({manifest.TargetGameLauncherName} routes through {reg.Trim('"')})";
+                    }
+                }
+                else
+                {
+                    // Installer-only mode: detect by checking for the
+                    // installed launcher exe rather than the IFEO key.
+                    var installedExe = Path.Combine(Installer.DefaultInstallDir, Installer.LauncherExeName);
+                    if (File.Exists(installedExe))
+                    {
+                        installState = $"installed at {Installer.DefaultInstallDir}";
+                    }
                 }
             }
             catch { /* HKLM read failed; leave default */ }
@@ -418,9 +433,6 @@ public static class CammHost
     private static int DoConfig(Action<string> log)
     {
         var manifest = Manifest;
-        // Settings dialog mode. Reached from Apps & Features Modify
-        // button, power users running --config, or the Already-
-        // Installed dialog's "change settings" branch.
         var configSettings = LauncherSettings.LoadOrCreate(LauncherSettings.DefaultPath);
         if (!OperatingSystem.IsWindows()) return 0;
 
@@ -452,9 +464,10 @@ public static class CammHost
         return 0;
     }
 
-    // Bare-exe entry handler. Returns:
+    // Bare-exe handler. Returns:
     //   - int: handled (caller should exit with this code)
-    //   - null: fall through to main launch flow
+    //   - null: fall through (running from install dir; main launch
+    //           flow follows in launcher mode)
     private static int? HandleBareExe(Action<string> log, Action<string> speak)
     {
         var manifest = Manifest;
@@ -464,7 +477,17 @@ public static class CammHost
         {
             if (OperatingSystem.IsWindows())
             {
-                installed = IfeoInstaller.GetRegisteredLauncherPath() is not null;
+                if (manifest.IfeoTargetExeNames is { Length: > 0 })
+                {
+                    installed = IfeoInstaller.GetRegisteredLauncherPath() is not null;
+                }
+                else
+                {
+                    // Installer-only mode: probe install dir for the
+                    // launcher exe.
+                    var installedExe = Path.Combine(Installer.DefaultInstallDir, Installer.LauncherExeName);
+                    installed = File.Exists(installedExe);
+                }
                 readOk = true;
             }
         }
@@ -477,19 +500,20 @@ public static class CammHost
             return 0;
         }
 
-        // Already installed AND running from outside the install dir =
-        // user double-clicked a downloaded copy of the launcher after
-        // a previous install. Offer Reinstall / Uninstall / Settings /
-        // Exit instead of silently falling through to launch.
         if (!OperatingSystem.IsWindows() || !readOk || !installed) return null;
 
         var currentExe = Environment.ProcessPath ?? "";
-        var installedExe = Path.Combine(Installer.DefaultInstallDir, Installer.LauncherExeName);
+        var installedExePath = Path.Combine(Installer.DefaultInstallDir, Installer.LauncherExeName);
         var runningFromInstallDir = string.Equals(
             Path.GetFullPath(currentExe),
-            Path.GetFullPath(installedExe),
+            Path.GetFullPath(installedExePath),
             StringComparison.OrdinalIgnoreCase);
-        if (runningFromInstallDir) return null;
+
+        // Launcher-mode adopters running from the install dir fall
+        // through to the main launch flow. Installer-only adopters
+        // running from the install dir have nothing to do (no game
+        // to launch), so they get the Already-Installed dialog too.
+        if (runningFromInstallDir && !manifest.IsInstallerOnly) return null;
 
         const int ID_REINSTALL = 101;
         const int ID_UNINSTALL = 102;
@@ -554,7 +578,9 @@ public static class CammHost
 
     private static bool AnyGameProcessRunning()
     {
-        foreach (var name in Manifest.GameProcessNames)
+        var names = Manifest.GameProcessNames;
+        if (names is null || names.Length == 0) return false;
+        foreach (var name in names)
         {
             if (Process.GetProcessesByName(name).Length > 0) return true;
         }
@@ -563,7 +589,9 @@ public static class CammHost
 
     private static void KillAllGameProcesses()
     {
-        foreach (var name in Manifest.GameProcessNames)
+        var names = Manifest.GameProcessNames;
+        if (names is null) return;
+        foreach (var name in names)
         {
             foreach (var p in Process.GetProcessesByName(name))
             {

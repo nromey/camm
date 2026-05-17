@@ -5,17 +5,18 @@ using Camm.Localization;
 namespace Camm;
 
 // First-time install: copy the launcher exe + its sidecar DLLs (Tolk)
-// to a stable Program Files location and register the IFEO redirect.
-// Uninstall is the inverse.
+// to a stable Program Files location, deploy each ModPayload to its
+// destination, and (if running in launcher mode) register the IFEO
+// redirect.
 //
 // CAMM installs to a per-machine path (Program Files\<DisplayName>\)
 // rather than per-user (LocalAppData). The IFEO entry the installer
 // registers is HKLM-only, so a per-user install path would create a
 // mismatch where the redirect points to a launcher that any other
 // user account on the machine couldn't read. Keep the binary and its
-// activation symmetric.
-//
-// Mod-specific values come from CammHost.Manifest at call time.
+// activation symmetric. (For installer-only mods with no IFEO entry,
+// the Program Files location still works fine — it's just the
+// canonical place a Windows app installs to.)
 [SupportedOSPlatform("windows")]
 public static class Installer
 {
@@ -28,22 +29,13 @@ public static class Installer
 
     public static string LauncherExeName => CammHost.Manifest.LauncherExeName;
 
-    // Open the install wizard. The wizard's pages drive the pre-
-    // elevation UX (Welcome, Channel, Ready); InstallingPage spawns
-    // the elevated child via runas + --install-from-wizard (or calls
-    // ApplyInstall directly when already elevated); DonePage handles
-    // success/failure completion UX. log/speak are accepted for
-    // caller-signature compat — the wizard itself routes speech
-    // through Tolk.
+    // Open the install wizard.
     public static void Install(Action<string> log, Action<string> speak)
     {
         log("Opening install wizard...");
         var context = new Wizard.InstallContext
         {
             IsDryRun = false,
-            // First install if the install dir doesn't exist yet. Drives
-            // the WelcomePage subhead ("by <Publisher>, version X.Y.Z"),
-            // shown only on genuine first installs.
             IsFirstInstall = !Directory.Exists(DefaultInstallDir),
         };
         Wizard.InstallWizardForm.Run(context);
@@ -59,14 +51,14 @@ public static class Installer
 
     // The post-elevation work, factored out so both the wizard flow
     // (via the launcher's --install-from-wizard entry point) and any
-    // future direct-invocation caller can reuse it. MUST be called from
-    // an elevated process — the caller is responsible for elevation
-    // handling and for any pre-install UI.
+    // future direct-invocation caller can reuse it. MUST be called
+    // from an elevated process — the caller is responsible for
+    // elevation handling and for any pre-install UI.
     //
-    // Steps: copy launcher exe + Tolk DLLs to install dir, deploy mod
-    // payload to deploy destination, register IFEO redirect, register
-    // Apps & Features. Idempotent — running twice is safe and refreshes
-    // files.
+    // Steps: copy launcher exe + Tolk DLLs to install dir, deploy each
+    // ModPayload to its destination (writing per-payload install
+    // manifests as it goes), register IFEO redirect (launcher mode
+    // only), register Apps & Features.
     public static void ApplyInstall(Action<string> log, Action<string> speak)
     {
         var manifest = CammHost.Manifest;
@@ -77,17 +69,11 @@ public static class Installer
             ?? throw new InvalidOperationException("Cannot determine current launcher exe path.");
         var installedLauncher = Path.Combine(destDir, LauncherExeName);
 
-        // Two-step copy of the launcher itself:
-        //   1. Copy the running .exe to the install dir, renamed to the
-        //      canonical LauncherExeName (no version, no dots). This is
-        //      the "downloaded as <Mod>-0.1.18.exe lands as <Mod>.exe"
-        //      step.
-        //   2. Drop the embedded Tolk DLLs next to it via the same
-        //      bootstrap path the launcher uses at every startup.
-        //
-        // Do NOT iterate AppContext.BaseDirectory — when the user runs
-        // a freshly-downloaded loose .exe, that directory is typically
-        // Downloads, full of unrelated files. Targeted copy only.
+        // Two-step copy of the launcher itself: file copy + Tolk
+        // sidecar extraction. Do NOT iterate AppContext.BaseDirectory
+        // — when the user runs a freshly-downloaded loose .exe, that
+        // directory is typically Downloads, full of unrelated files.
+        // Targeted copy only.
 
         var sameAsRunning = string.Equals(
             Path.GetFullPath(sourceExe),
@@ -107,10 +93,6 @@ public static class Installer
             }
             catch (IOException)
             {
-                // Destination .exe was in use (rare — only if a previous
-                // launcher run from the install dir is still alive). Stage
-                // as .pending and let the in-place swap take care of it
-                // on next launch.
                 File.Copy(sourceExe, installedLauncher + ".pending", overwrite: true);
                 log($"Existing launcher in use; staged update at {installedLauncher}.pending.");
             }
@@ -126,31 +108,47 @@ public static class Installer
                 "Did the assembly name change without updating manifest.LauncherExeName?");
         }
 
-        // Deploy the mod itself into the target game's deploy destination.
-        // Without this step, the launcher is installed but the game has
-        // no mod to load. Embedded resources -> destination (overwrites
-        // existing).
-        var modDeployDir = ModDeployer.DefaultDestination;
-        try
+        // Deploy each ModPayload to its destination, replacing any
+        // prior install (read the per-payload manifest from a prior
+        // run and clean up its files first so we don't leave orphans
+        // when the payload's file set shrinks between versions).
+        foreach (var payload in manifest.ModPayloads)
         {
-            var modCount = ModFiles.ExtractTo(modDeployDir);
-            log($"Deployed {modCount} mod files to {modDeployDir}.");
-        }
-        catch (Exception ex)
-        {
-            // Best-effort: if the deploy dir isn't writable for some
-            // reason, log it but don't fail the install. User can re-
-            // deploy manually or re-run install.
-            log($"Mod deploy to {modDeployDir} failed: {ex.Message}. " +
-                "Install completed but the mod won't load until files are placed there.");
+            // Clean prior install of this payload (if any) before
+            // dropping new files. Avoids orphaned files when the
+            // payload's content shrinks between versions.
+            var prior = ModFiles.ReadManifestForPayload(payload);
+            if (prior is not null)
+            {
+                ModFiles.RemoveByManifest(prior);
+                log($"Cleaned prior install of payload '{payload.Name}' ({prior.Files.Count} files).");
+            }
+
+            try
+            {
+                var installed = ModFiles.ExtractTo(payload);
+                log($"Deployed payload '{payload.Name}': {installed.Files.Count} files to {installed.DestinationRoot}.");
+            }
+            catch (Exception ex)
+            {
+                log($"Payload '{payload.Name}' deploy failed: {ex.Message}. " +
+                    "Install continues with remaining payloads.");
+            }
         }
 
-        IfeoInstaller.Install(installedLauncher);
-        var ifeoTargets = string.Join(" + ", manifest.IfeoTargetExeNames);
-        log($"Registered IFEO redirect for {ifeoTargets}.");
+        // Launcher mode: register IFEO redirect so the target-game
+        // exe gets intercepted by our launcher. Installer-only mods
+        // have no IFEO targets — skip.
+        if (manifest.IfeoTargetExeNames is { Length: > 0 } ifeoTargets)
+        {
+            IfeoInstaller.Install(installedLauncher);
+            log($"Registered IFEO redirect for {string.Join(" + ", ifeoTargets)}.");
+        }
+        else
+        {
+            log("No IFEO targets configured (installer-only mode); skipping IFEO redirect.");
+        }
 
-        // Register in Windows Apps & Features so users can uninstall
-        // via Settings UI rather than needing to find a terminal.
         try
         {
             AppsAndFeaturesRegistration.Register(
@@ -161,8 +159,6 @@ public static class Installer
         }
         catch (Exception ex)
         {
-            // Non-fatal: the launcher still works, just isn't listed
-            // in Settings → Apps. User can still --uninstall manually.
             log($"Apps & Features registration failed: {ex.Message}. " +
                 "Uninstall via terminal will still work.");
         }
@@ -175,9 +171,6 @@ public static class Installer
         var manifest = CammHost.Manifest;
         if (!IfeoInstaller.IsRunningElevated())
         {
-            // TaskDialog with explicit verb-labelled buttons. Self-
-            // documenting labels mean screen readers and sighted users
-            // both know what each button does at click time.
             const int ID_UNINSTALL = 1;
             const int ID_CANCEL = 2;
             var confirm = Dialogs.ShowChoice(
@@ -202,13 +195,8 @@ public static class Installer
                 return;
             }
 
-            // If running from inside the install dir (the A&F-invoked
-            // uninstall scenario: Windows runs
-            // "<install dir>\<LauncherExeName>" --uninstall), the
-            // elevated child would lock the install dir and prevent
-            // full cleanup. Stage a copy to %TEMP% and re-exec the
-            // elevated child from there so the install dir is free to
-            // be deleted.
+            // Stage a copy of ourselves out of the install dir if we
+            // would otherwise lock it during the elevated rerun.
             var currentExe = Environment.ProcessPath
                 ?? throw new InvalidOperationException("Cannot determine current exe path.");
             var installedExe = Path.Combine(DefaultInstallDir, LauncherExeName);
@@ -242,12 +230,12 @@ public static class Installer
             Environment.Exit(0);
         }
 
-        IfeoInstaller.Uninstall();
-        var ifeoTargets = string.Join(" + ", manifest.IfeoTargetExeNames);
-        log($"Removed IFEO redirect for {ifeoTargets}.");
+        if (manifest.IfeoTargetExeNames is { Length: > 0 } ifeoTargets)
+        {
+            IfeoInstaller.Uninstall();
+            log($"Removed IFEO redirect for {string.Join(" + ", ifeoTargets)}.");
+        }
 
-        // Remove the Apps & Features entry so the mod no longer shows
-        // up in Settings → Installed Apps.
         try
         {
             AppsAndFeaturesRegistration.Unregister();
@@ -259,32 +247,31 @@ public static class Installer
                 "Entry may remain in Settings but won't function.");
         }
 
-        // Remove the deployed mod from its destination dir. Without
-        // this, a follow-up reinstall might mix old mod files with new
-        // ones, and an uninstall would leave the game loading the mod
-        // anyway (since the manifest would still be present, even
-        // though accessibility output would be unrouted with the
-        // launcher gone).
-        var modDeployDir = ModDeployer.DefaultDestination;
-        if (Directory.Exists(modDeployDir))
+        // Remove each payload's deployed files by reading its
+        // install-time manifest. Per-file deletion is safe across
+        // shared destinations (where deleting the whole dir would
+        // nuke other content); for mod-owned destinations the
+        // manifest still produces the right result.
+        foreach (var payload in manifest.ModPayloads)
         {
+            var installed = ModFiles.ReadManifestForPayload(payload);
+            if (installed is null)
+            {
+                log($"No install manifest for payload '{payload.Name}'; nothing to clean up.");
+                continue;
+            }
             try
             {
-                Directory.Delete(modDeployDir, recursive: true);
-                log($"Removed mod files from {modDeployDir}.");
+                ModFiles.RemoveByManifest(installed);
+                ModFiles.DeleteManifestFile(payload);
+                log($"Removed {installed.Files.Count} files for payload '{payload.Name}' from {installed.DestinationRoot}.");
             }
             catch (Exception ex)
             {
-                log($"Could not remove {modDeployDir}: {ex.Message}. " +
-                    $"{manifest.TargetGameDisplayName} may still load the mod's " +
-                    "manifest but with no launcher routing speech.");
+                log($"Could not remove payload '{payload.Name}': {ex.Message}.");
             }
         }
 
-        // Remove the install dir itself. The non-elevated path stages a
-        // copy to %TEMP% before elevating in the running-from-install-
-        // dir case, so the elevated child here is never the locked
-        // installed exe.
         bool installDirCleaned = false;
         try
         {
@@ -326,15 +313,14 @@ public static class Installer
         var psi = new ProcessStartInfo
         {
             FileName = exe,
-            UseShellExecute = true,   // required for runas
+            UseShellExecute = true,
             Verb = "runas",
             Arguments = arg,
         };
         try { Process.Start(psi); }
         catch (System.ComponentModel.Win32Exception)
         {
-            // User declined the UAC prompt. Nothing to do — the parent
-            // process exits via Environment.Exit at the call site.
+            // User declined the UAC prompt.
         }
     }
 }

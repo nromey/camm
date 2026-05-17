@@ -37,8 +37,13 @@ public sealed class Updater
         ReleaseInfo release,
         CancellationToken ct = default)
     {
-        var launcherAssetName = string.Format(
-            CammHost.Manifest.LauncherAssetNamePattern, release.Version);
+        var pattern = CammHost.Manifest.LauncherAssetNamePattern;
+        if (string.IsNullOrEmpty(pattern))
+        {
+            _log("No launcher asset name pattern configured; auto-update is effectively disabled.");
+            return UpdateResult.NothingToDo;
+        }
+        var launcherAssetName = string.Format(pattern, release.Version);
         var launcherAsset = release.FindAsset(launcherAssetName);
 
         if (launcherAsset is null)

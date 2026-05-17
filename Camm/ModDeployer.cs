@@ -1,61 +1,68 @@
 namespace Camm;
 
-// Copies the mod source tree from a dev checkout into the target
-// game's mod/DLC directory before the launcher spawns the game. Lets
-// the dev loop be "edit source -> launch -> retest" instead of "edit
-// source -> manually copy -> launch -> retest", which gets painful
-// within the first hour of multi-iteration testing.
+// Copies a payload's mod source tree from a dev checkout into the
+// payload's destination directory before the launcher spawns the
+// game. Lets the dev edit-build-launch loop avoid manual copies.
 //
-// In a shipped installer the source tree won't sit next to the launcher
-// exe; FindModSourceDir returns null in that case and the consumer's
-// Program.cs skips the deploy step, falling through to "use whatever
-// the installer put in the destination dir."
+// In a shipped installer the source tree isn't next to the launcher
+// exe; FindModSourceDir returns null and CammHost skips the deploy
+// step, falling through to "use whatever the embedded extraction
+// put in the destination dir."
 //
-// Path discovery: walks parent directories from the launcher exe
-// looking for a folder named CammHost.Manifest.ModPayloadFolderName with a
-// CammHost.Manifest.ModPayloadSentinelFileName file inside. That double-check
-// (folder name + sentinel file) avoids confusing a random matching
-// folder name elsewhere on disk.
+// Each ModPayload has its own dev-mode source discovery: walks parent
+// directories from the launcher exe looking for a folder named
+// `payload.FolderName` with `payload.SentinelFileName` inside (when
+// the sentinel is non-empty). Multi-payload consumers may resolve
+// only some payloads in dev mode if the dev tree doesn't contain
+// all of them.
 public static class ModDeployer
 {
-    // Default deploy destination computed from CammConfig at call time
-    // (rather than cached) so consumers that compute it from
-    // Environment.GetFolderPath get fresh values each call.
-    public static string DefaultDestination => CammHost.Manifest.ModPayloadDefaultDestination();
-
-    public static string? FindModSourceDir()
+    // Walk up from AppContext.BaseDirectory looking for a folder
+    // named payload.FolderName. If SentinelFileName is non-empty,
+    // the candidate also has to contain that file. Returns the
+    // first matching path, or null.
+    public static string? FindModSourceDir(ModPayload payload)
     {
-        var modDirName = CammHost.Manifest.ModPayloadFolderName;
-        var sentinelFileName = CammHost.Manifest.ModPayloadSentinelFileName;
-        if (string.IsNullOrEmpty(modDirName)) return null;
+        if (string.IsNullOrEmpty(payload.FolderName)) return null;
 
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null)
         {
-            var candidate = Path.Combine(dir.FullName, modDirName);
-            if (string.IsNullOrEmpty(sentinelFileName))
+            var candidate = Path.Combine(dir.FullName, payload.FolderName);
+            if (Directory.Exists(candidate))
             {
-                // No sentinel configured — accept any folder with the
-                // right name. Less safe but supports adopters whose mod
-                // payload has no fixed manifest file.
-                if (Directory.Exists(candidate)) return candidate;
-            }
-            else if (File.Exists(Path.Combine(candidate, sentinelFileName)))
-            {
-                return candidate;
+                if (string.IsNullOrEmpty(payload.SentinelFileName))
+                {
+                    return candidate;
+                }
+                var sentinel = Path.Combine(candidate, payload.SentinelFileName);
+                if (File.Exists(sentinel)) return candidate;
             }
             dir = dir.Parent;
         }
         return null;
     }
 
-    // Copy semantics: overwrite-only, never delete. Doing a true mirror
-    // (delete dest-only files) would be tempting for cleanliness but
-    // operates on a path inside Program Files (or the game's mod dir);
-    // a bug in the path discovery + a delete pass is how user data gets
-    // shredded. Stale files left behind are typically harmless — the
-    // game's mod loader only loads what the manifest references — so
-    // leaving them is the safer default.
+    // Convenience for callers that need all payloads' source dirs at
+    // once. Returns a dictionary keyed by payload name; entries are
+    // null for payloads with no discoverable source dir.
+    public static Dictionary<string, string?> FindAllSourceDirs()
+    {
+        var result = new Dictionary<string, string?>();
+        foreach (var p in CammHost.Manifest.ModPayloads)
+        {
+            result[p.Name] = FindModSourceDir(p);
+        }
+        return result;
+    }
+
+    // Copy semantics: overwrite-only, never delete. Doing a true
+    // mirror (delete dest-only files) would be tempting for
+    // cleanliness but operates on a path inside Program Files or the
+    // game's mod dir — a bug in the path discovery + a delete pass
+    // is how user data gets shredded. Stale files left behind are
+    // typically harmless (game's mod loader only loads what the
+    // manifest references), so leaving them is the safer default.
     public static int Deploy(string sourceDir, string destDir)
     {
         Directory.CreateDirectory(destDir);

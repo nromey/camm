@@ -79,7 +79,8 @@ public static partial class WindowFocusManager
     // searching by name sidesteps that.
     private static IntPtr FindGameWindow()
     {
-        foreach (var name in CammHost.Manifest.GameProcessNames)
+        var names = CammHost.Manifest.GameProcessNames ?? Array.Empty<string>();
+        foreach (var name in names)
         {
             foreach (var p in Process.GetProcessesByName(name))
             {

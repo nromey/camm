@@ -1,109 +1,132 @@
 namespace Camm;
 
 // Per-mod configuration object — the consumer constructs one of these
-// at startup, calls CammHost.Initialize(manifest), and every CAMM
-// module reads from it via CammHost.Manifest at call time.
+// at startup and passes it to CammHost.RunAsync (or
+// CammHost.Initialize for direct-use scenarios). Every CAMM module
+// reads from it via CammHost.Manifest at call time.
 //
-// Replaces the v0.0.2 CammConfig (settable statics) with a single
-// init-only object. `required` init properties give compile-time
-// errors if a consumer forgets to set something — much safer than
-// the old "set the wrong property and the launcher uses 'Camm' as
-// its folder name" failure mode.
+// CAMM has two operating modes that the manifest's optional fields
+// select:
 //
-// Step 5 of CAMM_EXTRACTION_PLAN.md. Step 6+ adds methods to
-// CammHost (RunAsync etc.) that take this manifest, so the consumer
-// eventually doesn't construct it as a separate step at all —
-// CammHost.RunAsync(args, manifest) is the whole entry point.
+//   * **Launcher mode** — full chameleon launcher: install wizard +
+//     auto-update + IFEO transparent-launch + Tolk speech routing of
+//     in-game log-tail messages + lifecycle wait. The consumer fills
+//     in all the launcher fields (GameInstance, IfeoTargetExeNames,
+//     GameProcessNames, Sanitizer, MarkerProtocol).
+//
+//   * **Installer-only mode** — install wizard + auto-update only.
+//     Used by mods whose runtime lives inside the game's process
+//     (Harmony DLL, BepInEx plugin, Wwise mod, etc.) where there's
+//     no launcher exe to redirect through. Leave the launcher-mode
+//     fields null; CAMM detects installer-only at startup and skips
+//     the locate-game / launch / log-tail / lifecycle path.
+//
+// IsInstallerOnly returns true when GameInstance is null.
 public sealed class CammModManifest
 {
+    // ---------------------------------------------------------------
+    //  Always required
+    // ---------------------------------------------------------------
+
     // Folder name for per-user state (launcher.ini, launcher.log,
-    // .mod-redeploy-needed marker). Lives under %LocalAppData%.
+    // .mod-redeploy-needed marker, per-payload installed-*.json
+    // manifests). Lives under %LocalAppData%.
     public required string LocalAppDataFolderName { get; init; }
 
-    // Filename of the installed launcher exe (without path). Used by
-    // installer paths that reference the exe in Program Files. Civ VI
-    // Access uses "CivViAccess.exe"; a Factorio Access adopter would
-    // use "FactorioAccess.exe".
+    // Filename of the installed launcher exe (without path).
     public required string LauncherExeName { get; init; }
-
-    // Asset filename pattern produced by the release pipeline, where
-    // {0} is the version string. Used by Updater to find the launcher
-    // exe in a GitHub release's assets. Example: "CivViAccess-{0}.exe".
-    public required string LauncherAssetNamePattern { get; init; }
-
-    // GitHub Releases polling. Owner is the user/org; Repo is the
-    // repo name. Update checks fetch
-    // https://api.github.com/repos/<Owner>/<Repo>/releases.
-    public required string GitHubReleasesOwner { get; init; }
-    public required string GitHubReleasesRepo { get; init; }
 
     // User-Agent header for HTTP requests to GitHub. GitHub's API
     // requires a non-empty UA; pick something identifying.
     public required string UserAgent { get; init; }
 
-    // Target-game exe filenames the IFEO redirect intercepts. Civ VI
-    // Access has two (CivilizationVI.exe + CivilizationVI_DX12.exe);
-    // most games have one.
-    public required string[] IfeoTargetExeNames { get; init; }
-
-    // Process names (no .exe suffix) for the foreground-management
-    // and lifecycle-watch loops. Distinct from IfeoTargetExeNames
-    // because Process.GetProcessesByName uses the process name
-    // without ".exe" and some games name the process differently
-    // from the exe filename.
-    public required string[] GameProcessNames { get; init; }
-
-    // Mod payload metadata. Folder name = the directory CAMM looks
-    // for in parent dirs during dev-mode source discovery. Sentinel
-    // file = optional file CAMM checks for inside that folder to
-    // confirm it's genuinely a mod source dir, not a name collision
-    // (empty string disables the check).
-    public required string ModPayloadFolderName { get; init; }
-    public string ModPayloadSentinelFileName { get; init; } = "";
-
-    // Default destination where the mod payload gets deployed at
-    // install time (Civ VI's DLC dir, RimWorld's user-data Mods/
-    // dir, etc.). A Func<string> rather than a constant because the
-    // destination commonly needs Environment.GetFolderPath
-    // resolution at call time.
-    public required Func<string> ModPayloadDefaultDestination { get; init; }
-
-    // Apps & Features registry-entry metadata. KeyName is the HKLM
-    // Uninstall subkey name (usually equals LocalAppDataFolderName).
-    // DisplayName / Publisher / ProjectUrl drive the Settings →
-    // Installed Apps card.
+    // Apps & Features registry-entry metadata.
     public required string AppsAndFeaturesKeyName { get; init; }
     public required string DisplayName { get; init; }
     public required string Publisher { get; init; }
-    public string ProjectUrl { get; init; } = "";
+
+    // Mod payloads — one or more deployable artifact groups. Each
+    // payload has its own embed-resource prefix, its own dev-mode
+    // source-discovery hint, and its own deploy destination. See
+    // ModPayload.cs.
+    public required IReadOnlyList<ModPayload> ModPayloads { get; init; }
 
     // Human-readable name of the target game. Used in installer /
-    // wizard / uninstaller text ("Launch Civilization VI from Steam",
-    // "Civilization VI's mod folder"). Distinct from DisplayName:
-    // DisplayName is the mod's identity ("Civ VI Access"); this is
-    // the game's identity ("Civilization VI").
+    // wizard / uninstaller text ("Launch RimWorld from Steam",
+    // "RimWorld's mod folder"). Distinct from DisplayName: DisplayName
+    // is the mod's identity ("RimWorld Access"); this is the game's
+    // identity ("RimWorld").
     public required string TargetGameDisplayName { get; init; }
+
+    // ---------------------------------------------------------------
+    //  Optional with defaults
+    // ---------------------------------------------------------------
 
     // Storefront / launcher the user starts the game from. Defaults to
     // "Steam" because most accessibility-mod targets ship via Steam.
     // Overridable for Epic / GOG / standalone-installer games.
     public string TargetGameLauncherName { get; init; } = "Steam";
 
+    // Project home page. Shown in Apps & Features ("Visit website"
+    // link). Empty = no link.
+    public string ProjectUrl { get; init; } = "";
+
+    // ---------------------------------------------------------------
+    //  Auto-update — null/empty fields disable the check
+    // ---------------------------------------------------------------
+
+    // GitHub Releases polling. Both Owner and Repo must be set (and
+    // LauncherAssetNamePattern below) for auto-update to fire on
+    // launcher startup. Leaving any null/empty skips the check —
+    // useful during initial bring-up before the adopter has stood up
+    // a GitHub Releases pipeline.
+    public string? GitHubReleasesOwner { get; init; }
+    public string? GitHubReleasesRepo { get; init; }
+
+    // Asset filename pattern produced by the release pipeline, where
+    // {0} is the version string. Used by Updater to find the launcher
+    // exe in a GitHub release's assets. Example: "CivViAccess-{0}.exe"
+    // produces filenames like CivViAccess-0.3.0.exe. {0} is the bare
+    // version with no "v" prefix.
+    public string? LauncherAssetNamePattern { get; init; }
+
+    public bool AutoUpdateEnabled =>
+        !string.IsNullOrEmpty(GitHubReleasesOwner)
+        && !string.IsNullOrEmpty(GitHubReleasesRepo)
+        && !string.IsNullOrEmpty(LauncherAssetNamePattern);
+
+    // ---------------------------------------------------------------
+    //  Launcher-mode only — leave null for installer-only mods
+    //  (Harmony DLL, BepInEx plugin, in-game mod with no separate
+    //   launcher process)
+    // ---------------------------------------------------------------
+
+    // Target-game exe filenames the IFEO redirect intercepts. Civ VI
+    // Access has two (CivilizationVI.exe + CivilizationVI_DX12.exe);
+    // most games have one. Null/empty = no IFEO redirect installed.
+    public string[]? IfeoTargetExeNames { get; init; }
+
+    // Process names (no .exe suffix) for the foreground-management
+    // and lifecycle-watch loops. Null/empty = no game-launch
+    // lifecycle handling.
+    public string[]? GameProcessNames { get; init; }
+
     // Per-mod in-engine markup sanitizer for log-tail speech.
-    // Strips/transforms markup ([ICON_*], [COLOR:*], [NEWLINE], etc.)
-    // before lines reach Tolk. Each game has its own markup
-    // vocabulary; consumer provides an implementation.
-    public required Speech.IMessageSanitizer Sanitizer { get; init; }
+    // Null = no log-tail speech bridge (Harmony mods etc. speak
+    // in-process via their own bindings, bypassing the log).
+    public Speech.IMessageSanitizer? Sanitizer { get; init; }
 
-    // Per-mod log-line marker convention. Identifies which lines are
-    // screen-reader-bound and parses any embedded options
-    // (NOINTERRUPT etc.). Civ VI Access uses prefix "#SCREENREADER";
-    // a different game's accessibility mod would use a different
-    // convention.
-    public required Speech.IScreenReaderMarkerProtocol MarkerProtocol { get; init; }
+    // Per-mod log-line marker convention. Null = no log-tail speech.
+    public Speech.IScreenReaderMarkerProtocol? MarkerProtocol { get; init; }
 
-    // Per-game hooks for the main launch flow: locating the game
-    // exe, finding its log file, supplying user-facing speech
-    // strings. Consumed by CammHost.RunAsync.
-    public required IGameInstance GameInstance { get; init; }
+    // Per-game hooks for the main launch flow (locate game, log file,
+    // launch + closed announcements). Null = installer-only mode:
+    // CammHost.RunAsync skips the entire game-launch / log-tail /
+    // lifecycle-wait tail after handling args + install + update.
+    public IGameInstance? GameInstance { get; init; }
+
+    // True when the manifest doesn't drive a game-launch flow. CAMM's
+    // RunAsync exits cleanly after install/update/uninstall flow
+    // completes rather than locating + launching the target game.
+    public bool IsInstallerOnly => GameInstance is null;
 }

@@ -32,6 +32,11 @@ public sealed class AccessibleOutputHandler
     {
         var protocol = CammHost.Manifest.MarkerProtocol;
         var sanitizer = CammHost.Manifest.Sanitizer;
+        // Installer-only manifests leave these null. LogTailSpeaker
+        // won't be started in that case, but a guard here means a
+        // misconfigured manifest fails loud-and-early instead of
+        // throwing deep inside the speech pipeline.
+        if (protocol is null || sanitizer is null) return;
 
         var lines = message.Split('\n');
         foreach (var line in lines)
