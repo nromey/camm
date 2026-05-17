@@ -11,6 +11,38 @@ can consume CAMM without reading the civ-vi-access source. Pre-1.0
 means any release can break API; consumers pin to a tag SHA and
 upgrade when ready.
 
+## 0.0.6 — 2026-05-17 — Step 9: CammHost.RunAsync (the unified entry point)
+
+CammHost gains a `RunAsync(args, manifest)` method that absorbs the
+entire chameleon-mode routing flow: pending-self-update, Tolk
+bootstrap, args dispatch (--install / --uninstall / --version /
+--config / --install-from-wizard / --wizard-test), transparent
+invocation detection, bare-exe install trigger, Already-Installed
+dialog, update check + apply, game launch via the configured
+IGameInstance, log-tail speech, lifecycle watch.
+
+New required CammModManifest field: `GameInstance` (IGameInstance).
+The interface has four members:
+- `FindGameExe()` — absolute path to the target game's main exe
+- `GetLogFilePath()` — absolute path to the game's log file CAMM
+  tails for speech-bound lines
+- `GetLaunchAnnouncement()` — what to speak just before launching
+  (mods that distinguish first-vs-subsequent launch return different
+  text from here)
+- `GetClosedAnnouncement()` — what to speak when the game process
+  exits
+
+A consuming launcher's Program.cs now looks like:
+
+    return await CammHost.RunAsync(args, new CammModManifest { ... });
+
+For Civ VI Access (the test-case adopter in this commit's companion
+PR), that's ~30 lines of manifest construction + the CammHost.RunAsync
+call, down from ~670 lines of routing logic. The Civ-VI-specific
+hooks (CivilizationVI path, Lua.log path, EULA-aware launch text,
+"Sid Meier's Civilization VI closed.") live in a single
+CivViGameInstance class.
+
 ## 0.0.5 — 2026-05-17 — Step 8: speech seams
 
 Log-tail speech routing moves into CAMM via two new manifest-supplied

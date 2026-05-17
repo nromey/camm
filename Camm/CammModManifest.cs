@@ -101,4 +101,9 @@ public sealed class CammModManifest
     // a different game's accessibility mod would use a different
     // convention.
     public required Speech.IScreenReaderMarkerProtocol MarkerProtocol { get; init; }
+
+    // Per-game hooks for the main launch flow: locating the game
+    // exe, finding its log file, supplying user-facing speech
+    // strings. Consumed by CammHost.RunAsync.
+    public required IGameInstance GameInstance { get; init; }
 }
