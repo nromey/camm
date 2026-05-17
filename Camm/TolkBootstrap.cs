@@ -51,11 +51,11 @@ public static partial class TolkBootstrap
     // next to the exe (post-install)" and "extract to temp + redirect
     // loader (pre-install)" cases automatically.
     //
-    // tempDirPrefix names the per-launch temp dir (e.g. "CivViAccess"
-    // → %TEMP%\CivViAccess_<pid>\). Per-mod so two CAMM-built
-    // launchers running side-by-side don't fight over the same temp
-    // path.
-    public static void PrepareRuntime(string tempDirPrefix)
+    // Per-launch temp dir name uses CammHost.Manifest.LocalAppDataFolderName
+    // as a prefix (e.g. "CivViAccess" → %TEMP%\CivViAccess_<pid>\) so
+    // two CAMM-built launchers running side-by-side don't fight over
+    // the same temp path.
+    public static void PrepareRuntime()
     {
         var exeDir = AppContext.BaseDirectory;
         if (File.Exists(Path.Combine(exeDir, "Tolk.dll")))
@@ -70,7 +70,8 @@ public static partial class TolkBootstrap
         // the DLL loader at it via SetDllDirectory. Avoids polluting
         // Downloads / Desktop with stray DLL files.
         var pid = System.Diagnostics.Process.GetCurrentProcess().Id;
-        _tempExtractDir = Path.Combine(Path.GetTempPath(), $"{tempDirPrefix}_{pid}");
+        var prefix = CammHost.Manifest.LocalAppDataFolderName;
+        _tempExtractDir = Path.Combine(Path.GetTempPath(), $"{prefix}_{pid}");
         ExtractTo(_tempExtractDir);
 
         if (OperatingSystem.IsWindows())

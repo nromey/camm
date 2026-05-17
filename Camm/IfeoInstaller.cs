@@ -42,7 +42,7 @@ public static class IfeoInstaller
     // together.
     public static string? GetRegisteredLauncherPath()
     {
-        foreach (var exeName in CammConfig.IfeoTargetExeNames)
+        foreach (var exeName in CammHost.Manifest.IfeoTargetExeNames)
         {
             using var key = Registry.LocalMachine.OpenSubKey(
                 $@"{IfeoKeyPath}\{exeName}", writable: false);
@@ -76,7 +76,7 @@ public static class IfeoInstaller
         // and a Program Files install would break.
         var quoted = $"\"{launcherPath}\"";
 
-        foreach (var exeName in CammConfig.IfeoTargetExeNames)
+        foreach (var exeName in CammHost.Manifest.IfeoTargetExeNames)
         {
             using var key = Registry.LocalMachine.CreateSubKey(
                 $@"{IfeoKeyPath}\{exeName}", writable: true)
@@ -91,7 +91,7 @@ public static class IfeoInstaller
         using var parent = Registry.LocalMachine.OpenSubKey(IfeoKeyPath, writable: true);
         if (parent is null) return;
 
-        foreach (var exeName in CammConfig.IfeoTargetExeNames)
+        foreach (var exeName in CammHost.Manifest.IfeoTargetExeNames)
         {
             using var sub = parent.OpenSubKey(exeName, writable: true);
             if (sub is null) continue;
@@ -112,7 +112,7 @@ public static class IfeoInstaller
     }
 
     // Detect transparent invocation: if our first arg looks like a path
-    // ending in one of CammConfig.IfeoTargetExeNames, we were almost
+    // ending in one of CammHost.Manifest.IfeoTargetExeNames, we were almost
     // certainly invoked by IFEO. The arg is the path Windows would have
     // launched; the consumer passes it through to ProcessLauncher to
     // launch the real target game.
@@ -121,7 +121,7 @@ public static class IfeoInstaller
         gameExePath = "";
         if (args.Length == 0) return false;
         var first = args[0];
-        foreach (var exeName in CammConfig.IfeoTargetExeNames)
+        foreach (var exeName in CammHost.Manifest.IfeoTargetExeNames)
         {
             if (first.EndsWith(exeName, StringComparison.OrdinalIgnoreCase)
                 && File.Exists(first))

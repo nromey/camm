@@ -28,7 +28,7 @@ namespace Camm;
 // hooking thread, which a console app doesn't have by default. A 250ms
 // poll is 4 syscalls / sec, indistinguishable from background noise.
 //
-// Process names come from CammConfig.GameProcessNames — set by the
+// Process names come from CammHost.Manifest.GameProcessNames — set by the
 // consumer at startup.
 public static partial class WindowFocusManager
 {
@@ -72,14 +72,14 @@ public static partial class WindowFocusManager
 
     public static IntPtr GetConsoleWindowHandle() => GetConsoleWindow();
 
-    // Walks running processes named in CammConfig.GameProcessNames and
+    // Walks running processes named in CammHost.Manifest.GameProcessNames and
     // returns the first visible top-level window we find. Games' launcher
     // EXE may spawn a child (e.g. DX12 path), so the process returned by
     // Process.Start isn't necessarily the one with the visible window —
     // searching by name sidesteps that.
     private static IntPtr FindGameWindow()
     {
-        foreach (var name in CammConfig.GameProcessNames)
+        foreach (var name in CammHost.Manifest.GameProcessNames)
         {
             foreach (var p in Process.GetProcessesByName(name))
             {

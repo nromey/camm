@@ -12,8 +12,8 @@ namespace Camm;
 // the installer put in the destination dir."
 //
 // Path discovery: walks parent directories from the launcher exe
-// looking for a folder named CammConfig.ModPayloadFolderName with a
-// CammConfig.ModPayloadSentinelFileName file inside. That double-check
+// looking for a folder named CammHost.Manifest.ModPayloadFolderName with a
+// CammHost.Manifest.ModPayloadSentinelFileName file inside. That double-check
 // (folder name + sentinel file) avoids confusing a random matching
 // folder name elsewhere on disk.
 public static class ModDeployer
@@ -21,12 +21,12 @@ public static class ModDeployer
     // Default deploy destination computed from CammConfig at call time
     // (rather than cached) so consumers that compute it from
     // Environment.GetFolderPath get fresh values each call.
-    public static string DefaultDestination => CammConfig.ModPayloadDefaultDestination();
+    public static string DefaultDestination => CammHost.Manifest.ModPayloadDefaultDestination();
 
     public static string? FindModSourceDir()
     {
-        var modDirName = CammConfig.ModPayloadFolderName;
-        var sentinelFileName = CammConfig.ModPayloadSentinelFileName;
+        var modDirName = CammHost.Manifest.ModPayloadFolderName;
+        var sentinelFileName = CammHost.Manifest.ModPayloadSentinelFileName;
         if (string.IsNullOrEmpty(modDirName)) return null;
 
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

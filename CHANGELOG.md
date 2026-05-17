@@ -5,10 +5,44 @@ Reverse-chronological. Dates are when work landed.
 ## Versioning
 
 `0.0.x` for the initial extraction from `civ-vi-access`. `0.1.0` is
-reserved for the point where the public surface (`CammHost.RunAsync` +
-`CammModManifest`) lands and a second mod can consume CAMM without
-reading the civ-vi-access source. Pre-1.0 means any release can break
-API; consumers pin to a tag SHA and upgrade when ready.
+reserved for the point where `CammHost.RunAsync` lands (full routing
+inside CAMM, consumer's Program.cs is a few lines) and a second mod
+can consume CAMM without reading the civ-vi-access source. Pre-1.0
+means any release can break API; consumers pin to a tag SHA and
+upgrade when ready.
+
+## 0.0.3 — 2026-05-17 — Step 5: CammModManifest + CammHost
+
+CammModManifest replaces the v0.0.2 CammConfig settable-statics
+pattern. `required` init-only properties on the manifest give
+compile-time errors if a consumer forgets to set something — much
+safer than the old "set the wrong property and the launcher writes
+to %LocalAppData%\Camm\ instead of the intended folder" failure
+mode.
+
+CammHost.Initialize(manifest) is called once by the consumer at
+process startup; CammHost.Manifest is the read accessor every CAMM
+module uses (throws on uninitialized access — fail-fast for ordering
+bugs).
+
+API surface changes:
+- Logger.StartSession(mode, folderName) → Logger.StartSession(mode).
+  Reads CammHost.Manifest.LocalAppDataFolderName.
+- TolkBootstrap.PrepareRuntime(tempDirPrefix) →
+  TolkBootstrap.PrepareRuntime(). Reads
+  CammHost.Manifest.LocalAppDataFolderName.
+
+Internals: every reference to CammConfig.X in the v0.0.2 modules
+became CammHost.Manifest.X (mechanical rename across Logger,
+LauncherSettings, GitHubReleasesClient, Updater, IfeoInstaller,
+AppsAndFeaturesRegistration, WindowFocusManager, ModDeployer).
+CammConfig.cs deleted.
+
+Still to come (Steps 6+ of CAMM_EXTRACTION_PLAN.md): move Installer +
+Wizard into CAMM, introduce LocaleCatalog, move LogTailSpeaker +
+AccessibleOutputHandler with sanitizer/marker-protocol seams, then
+ship the full CammHost.RunAsync(args, manifest) routing entry point
+that lets consumer Program.cs be a few lines.
 
 ## 0.0.1 — 2026-05-17 — Initial extraction (Step 1 of the migration plan)
 

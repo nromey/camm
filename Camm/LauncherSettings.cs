@@ -1,7 +1,7 @@
 namespace Camm;
 
 // User-editable settings for a CAMM-built launcher. Stored as a simple
-// key=value ini in %LocalAppData%\<CammConfig.LocalAppDataFolderName>\
+// key=value ini in %LocalAppData%\<CammHost.Manifest.LocalAppDataFolderName>\
 // so a screen-reader user can edit it with Notepad / their editor of
 // choice without right-click tray menus or custom dialogs. Hand-parsed
 // (no INI library) because the schema is tiny and AOT-friendly parsing
@@ -28,7 +28,7 @@ public sealed class LauncherSettings
         {
             var dir = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                CammConfig.LocalAppDataFolderName);
+                CammHost.Manifest.LocalAppDataFolderName);
             try { Directory.CreateDirectory(dir); } catch { /* read-only profile is fine */ }
             return Path.Combine(dir, FileName);
         }
@@ -89,7 +89,7 @@ public sealed class LauncherSettings
             _ => "stable",
         };
         var template =
-            "# " + CammConfig.DisplayName + " launcher settings\n" +
+            "# " + CammHost.Manifest.DisplayName + " launcher settings\n" +
             "#\n" +
             "# UpdateChannel: which release track to follow.\n" +
             "#   stable  — only tagged stable releases (default, safer)\n" +
@@ -97,12 +97,12 @@ public sealed class LauncherSettings
             "#   off     — never check for updates (not recommended — you\n" +
             "#             will miss bug fixes and new screen support)\n" +
             "#\n" +
-            "# This file lives in %LocalAppData%\\" + CammConfig.LocalAppDataFolderName + "\\ so you can\n" +
+            "# This file lives in %LocalAppData%\\" + CammHost.Manifest.LocalAppDataFolderName + "\\ so you can\n" +
             "# edit it without admin elevation. The launcher also exposes\n" +
             "# a settings dialog via:\n" +
             "#   - Welcome dialog at first install\n" +
             "#   - Apps & Features \"Modify\" button (Settings > Apps)\n" +
-            "#   - Command line: " + CammConfig.LauncherExeName + " --config\n" +
+            "#   - Command line: " + CammHost.Manifest.LauncherExeName + " --config\n" +
             "#\n" +
             "UpdateChannel=" + channelValue + "\n";
         File.WriteAllText(path, template);

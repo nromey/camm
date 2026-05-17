@@ -21,7 +21,7 @@ public sealed class GitHubReleasesClient
     public GitHubReleasesClient(HttpClient? http = null)
     {
         _http = http ?? new HttpClient();
-        _http.DefaultRequestHeaders.UserAgent.ParseAdd(CammConfig.UserAgent);
+        _http.DefaultRequestHeaders.UserAgent.ParseAdd(CammHost.Manifest.UserAgent);
         _http.DefaultRequestHeaders.Accept.Add(
             new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
     }
@@ -30,8 +30,8 @@ public sealed class GitHubReleasesClient
         UpdateChannel channel,
         CancellationToken ct = default)
     {
-        var owner = CammConfig.GitHubReleasesOwner;
-        var repo = CammConfig.GitHubReleasesRepo;
+        var owner = CammHost.Manifest.GitHubReleasesOwner;
+        var repo = CammHost.Manifest.GitHubReleasesRepo;
         var url = $"https://api.github.com/repos/{owner}/{repo}/releases?per_page=30";
         var releases = await _http.GetFromJsonAsync(
             url,

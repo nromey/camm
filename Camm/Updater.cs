@@ -4,7 +4,7 @@ namespace Camm;
 //
 // SINGLE-ARTIFACT MODEL: the launcher .exe contains the mod tree as
 // embedded resources, so a release ships ONE artifact, the launcher
-// binary. Asset name pattern comes from CammConfig.LauncherAssetNamePattern
+// binary. Asset name pattern comes from CammHost.Manifest.LauncherAssetNamePattern
 // ("{0}" gets the version string).
 //
 // The launcher can't replace itself while running, so the downloaded
@@ -36,7 +36,7 @@ public sealed class Updater
         CancellationToken ct = default)
     {
         var launcherAssetName = string.Format(
-            CammConfig.LauncherAssetNamePattern, release.Version);
+            CammHost.Manifest.LauncherAssetNamePattern, release.Version);
         var launcherAsset = release.FindAsset(launcherAssetName);
 
         if (launcherAsset is null)
@@ -82,7 +82,7 @@ public sealed class Updater
     // Path the swap step writes when it applies a .pending update.
     // The new launcher reads this on startup and rehydrates the mod
     // before continuing, then deletes the marker. Lives in
-    // %LocalAppData%\<CammConfig.LocalAppDataFolderName>\ (user-writable,
+    // %LocalAppData%\<CammHost.Manifest.LocalAppDataFolderName>\ (user-writable,
     // matches launcher.ini and launcher.log location).
     public static string RedeployMarkerPath
     {
@@ -90,7 +90,7 @@ public sealed class Updater
         {
             var dir = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                CammConfig.LocalAppDataFolderName);
+                CammHost.Manifest.LocalAppDataFolderName);
             try { Directory.CreateDirectory(dir); } catch { }
             return Path.Combine(dir, ".mod-redeploy-needed");
         }

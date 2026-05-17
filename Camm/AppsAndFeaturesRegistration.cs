@@ -26,7 +26,7 @@ public static class AppsAndFeaturesRegistration
 {
     private static string UninstallKeyPath =>
         @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\" +
-        CammConfig.AppsAndFeaturesKeyName;
+        CammHost.Manifest.AppsAndFeaturesKeyName;
 
     public static void Register(string installDir, string launcherExePath, string version)
     {
@@ -34,9 +34,9 @@ public static class AppsAndFeaturesRegistration
             ?? throw new UnauthorizedAccessException(
                 "Failed to open HKLM Uninstall subkey. Are we elevated?");
 
-        key.SetValue("DisplayName", CammConfig.DisplayName, RegistryValueKind.String);
+        key.SetValue("DisplayName", CammHost.Manifest.DisplayName, RegistryValueKind.String);
         key.SetValue("DisplayVersion", version, RegistryValueKind.String);
-        key.SetValue("Publisher", CammConfig.Publisher, RegistryValueKind.String);
+        key.SetValue("Publisher", CammHost.Manifest.Publisher, RegistryValueKind.String);
         key.SetValue("InstallLocation", installDir, RegistryValueKind.String);
         key.SetValue("DisplayIcon", launcherExePath, RegistryValueKind.String);
 
@@ -59,11 +59,11 @@ public static class AppsAndFeaturesRegistration
         // is idempotent and acts as repair if anything's corrupted.
         key.SetValue("NoRepair", 1, RegistryValueKind.DWord);
 
-        if (!string.IsNullOrEmpty(CammConfig.ProjectUrl))
+        if (!string.IsNullOrEmpty(CammHost.Manifest.ProjectUrl))
         {
             // Project URL for the "Visit website" link in Settings.
             key.SetValue("URLInfoAbout",
-                CammConfig.ProjectUrl,
+                CammHost.Manifest.ProjectUrl,
                 RegistryValueKind.String);
         }
 
