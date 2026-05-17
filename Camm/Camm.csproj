@@ -29,6 +29,27 @@
          arithmetic in Dialogs. Does not weaken consumer code —
          only permits the generated stubs to compile. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <!-- WinForms is required for the install wizard (Camm/Wizard/).
+         Trim suppression is the documented escape hatch for using
+         WinForms under PublishAot — see
+         reference_winforms_aot_trim_suppression memory. The CAMM
+         wizard surface is intentionally code-only (no Designer files,
+         no data binding, no property grid), which is the lightweight
+         subset of WinForms that survives aggressive trimming. -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <_SuppressWinFormsTrimError>true</_SuppressWinFormsTrimError>
+
+    <!-- WFO0001 "Only projects with OutputType=WindowsApplication
+         supported" fires because the WinForms source generators
+         (which generate ApplicationConfiguration.Initialize and
+         related glue) only fire for Windows-app projects. CAMM is a
+         library consumed by Windows apps — the consumer's project IS
+         a Windows app and its source generators handle the
+         configuration. We replace ApplicationConfiguration.Initialize()
+         with the explicit underlying calls in InstallWizardForm.Run
+         and silence the analyzer here. -->
+    <NoWarn>$(NoWarn);WFO0001</NoWarn>
   </PropertyGroup>
 
   <!-- Tolk binding source. Same pattern as the original civ-vi-access

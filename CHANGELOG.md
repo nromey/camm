@@ -11,6 +11,45 @@ can consume CAMM without reading the civ-vi-access source. Pre-1.0
 means any release can break API; consumers pin to a tag SHA and
 upgrade when ready.
 
+## 0.0.4 — 2026-05-17 — Step 6: Installer + Wizard + ChannelPickerDialog
+
+Installer.cs, ChannelPickerDialog.cs, and the entire Wizard/ folder
+(IWizardPage, InstallContext, InstallWizardForm + Welcome/Channel/
+Ready/Installing/Done pages) move from civ-vi-access into CAMM.
+
+All mod-specific strings now flow through CammModManifest:
+- `Install {DisplayName}` / `Installing {DisplayName}. Please wait.`
+  (Welcome, Installing headings + announcements)
+- `by {Publisher}, version X.Y.Z` (Welcome subhead)
+- `Launch {TargetGameDisplayName} from {TargetGameLauncherName}` (Done
+  body, Uninstall completion dialog)
+- `{TargetGameDisplayName}'s mod folder` / `{TargetGameLauncherName}
+  launch redirect` (Uninstall body)
+- `%LocalAppData%\{LocalAppDataFolderName}\launcher.ini` (Done body)
+- `{DisplayName} — Update Channel` / `{DisplayName} Setup`
+  (ChannelPickerDialog title, wizard form title)
+
+Two new required manifest fields capture target-game identity:
+- TargetGameDisplayName — "Civilization VI", "RimWorld", etc.
+- TargetGameLauncherName — defaults to "Steam"; override for Epic /
+  GOG / standalone-installer games.
+
+Build configuration: Camm.csproj gains <UseWindowsForms>true</UseWindowsForms>
++ <_SuppressWinFormsTrimError>true</_SuppressWinFormsTrimError>
++ NoWarn=WFO0001 (the "OutputType=WindowsApplication required"
+analyzer; CAMM is a library consumed by a WindowsApplication exe).
+ApplicationConfiguration.Initialize() replaced with explicit
+Application.EnableVisualStyles / SetCompatibleTextRenderingDefault /
+SetHighDpiMode calls in InstallWizardForm.Run, since the source-
+generated Initialize only emits in WindowsApplication projects.
+
+After this release, a CAMM-built launcher's Program.cs only needs
+to: construct a CammModManifest, call CammHost.Initialize, then
+invoke the framework's per-mode entry points (Installer.Install,
+Installer.Uninstall, ChannelPickerDialog.Show, etc.). Step 7 of the
+plan (LocaleCatalog) starts moving the visible strings out into
+lang/en.json so translators can contribute.
+
 ## 0.0.3 — 2026-05-17 — Step 5: CammModManifest + CammHost
 
 CammModManifest replaces the v0.0.2 CammConfig settable-statics

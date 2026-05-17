@@ -76,4 +76,16 @@ public sealed class CammModManifest
     public required string DisplayName { get; init; }
     public required string Publisher { get; init; }
     public string ProjectUrl { get; init; } = "";
+
+    // Human-readable name of the target game. Used in installer /
+    // wizard / uninstaller text ("Launch Civilization VI from Steam",
+    // "Civilization VI's mod folder"). Distinct from DisplayName:
+    // DisplayName is the mod's identity ("Civ VI Access"); this is
+    // the game's identity ("Civilization VI").
+    public required string TargetGameDisplayName { get; init; }
+
+    // Storefront / launcher the user starts the game from. Defaults to
+    // "Steam" because most accessibility-mod targets ship via Steam.
+    // Overridable for Epic / GOG / standalone-installer games.
+    public string TargetGameLauncherName { get; init; } = "Steam";
 }
