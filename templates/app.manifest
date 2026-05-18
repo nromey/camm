@@ -31,8 +31,8 @@
 
     CAMM elevates internally via UAC-prompted reinvocation only when a
     privileged operation is needed (install / uninstall writes to
-    Program Files + HKLM). Day-to-day --version / --config / game-launch
-    paths stay unprivileged.
+    Program Files + HKLM). Day-to-day paths (version-print, config,
+    transparent game-launch) stay unprivileged.
   -->
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>

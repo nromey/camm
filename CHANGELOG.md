@@ -11,6 +11,41 @@ can consume CAMM without reading the civ-vi-access source. Pre-1.0
 means any release can break API; consumers pin to a tag SHA and
 upgrade when ready.
 
+## 0.3.1 — 2026-05-18 — app.manifest template fix (ship-stopper)
+
+Critical patch. The `templates/app.manifest` file shipped in v0.2.1
+contained a comment block with the literal strings `--version` and
+`--config` inside `<!-- ... -->`. XML forbids `--` inside comments
+(W3C XML 1.0 §2.5 — only the closing `-->` may contain it). MSBuild
+embeds the malformed manifest into the EXE without complaint, but
+Windows side-by-side activation rejects it at process startup with:
+
+> The application has failed to start because its side-by-side
+> configuration is incorrect.
+
+The chained error in Event Viewer (`Activation context generation
+failed ... Invalid Xml syntax`) is the only hint at the real cause.
+
+The bug was caught by both v0.3.0 AI-readability test adopters
+independently (Civ V Access + RimWorld Access). Both followed
+`docs/getting-started.md` Step 3 verbatim ("copy
+`camm/templates/app.manifest`"), both got an unrunnable binary, and
+both diagnosed the cause from outside the CAMM toolchain (PowerShell
+XML parse, Event Viewer log).
+
+Fix: rewrote the trustInfo comment to describe day-to-day code paths
+without `--` flag prefixes. Behavior of the manifest is unchanged;
+the binary now starts.
+
+`docs/getting-started.md` Step 3 also gains a one-paragraph warning
+about the `--`-in-XML-comments rule, with a PowerShell `[xml]$x =
+Get-Content` validation snippet adopters can wire into their build
+as a pre-step.
+
+`civ-vi-access/CivViAccess/app.manifest` was NOT affected (the
+trustInfo block I added there in the v0.2.1 sync uses shorter
+wording with no flag-prefix strings).
+
 ## 0.3.0 — 2026-05-17 — Adaptive launcher mode + post-install hook + backup/restore
 
 API-additive minor bump driven by the same v0.2.0 test reports. The

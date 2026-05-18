@@ -172,7 +172,16 @@ List every sibling directory you want the glob to ignore.
 ## Step 3: copy `app.manifest`
 
 Copy `camm/templates/app.manifest` into your launcher project's
-directory. The template declares:
+directory. **If you edit the template's comments**, watch out for
+the XML rule that `--` may not appear inside a `<!-- ... -->` block
+(only the closing `-->` may contain it). MSBuild embeds malformed
+manifests silently; Windows side-by-side activation rejects them at
+process startup with a useless "side-by-side configuration is
+incorrect" error. To catch this before the binary fails to run, you
+can XML-parse the manifest as a build-time pre-step (PowerShell:
+`[xml]$x = Get-Content app.manifest`).
+
+The template declares:
 
 - The Common Controls v6 dependency required by `TaskDialogIndirect`
   (CAMM's `ChannelPickerDialog` and several wizard dialogs). Without
