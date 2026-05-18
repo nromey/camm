@@ -25,10 +25,13 @@ The manifest's fields select one of three operating modes:
   scripting context). Saves you from writing two seam classes that
   CAMM would never call.
 - **Installer-only mode**: `GameInstance` null. CAMM installs +
-  registers in Apps & Features + auto-updates, then exits. The
-  install + update path is the entire feature surface; no game
-  launch ever happens via CAMM. Harmony / BepInEx / MelonLoader
-  shape.
+  registers in Apps & Features, then exits. The install + update
+  path is the entire feature surface; no game launch ever happens
+  via CAMM, and no IFEO redirect is registered. Updates apply
+  whenever the user re-runs the installer exe — auto-update on
+  game launch is launcher-mode-only in v0.4.x. (v0.5 will add an
+  opt-in update-only IFEO for installer-only adopters who want
+  parity.) Harmony / BepInEx / MelonLoader shape.
 
 Two derived properties:
 - `IsInstallerOnly` → true when `GameInstance is null`.

@@ -15,15 +15,19 @@ runtime install required on the user's machine, and the executable
 starts cold in well under a second.
 
 Once CAMM is in place, the only thing you have to do is keep
-shipping your mod. The CAMM installer adds — via a Windows **Image
-File Execution Options (IFEO)** redirect — a small piece of code
-that keeps your mod up to date on the user's machine. The installer
-also lets the user pick an update channel (stable, latest, or off),
-and on every game launch CAMM does a fast check against your
-mod's GitHub Releases page and updates the mod before handing
-control to the game. We think it's a complete install solution that
-keeps your code current and installs easily for your users,
-without them having to install any .NET frameworks first.
+shipping your mod. The installer lets the user pick an update
+channel (stable, latest, or off), and CAMM checks your mod's GitHub
+Releases page for a newer build every time the launcher exe runs.
+In **launcher mode**, CAMM adds a Windows **Image File Execution
+Options (IFEO)** redirect so the launcher exe runs first on every
+game launch — that's where the "auto-update on every game launch"
+story comes from. In **installer-only mode** (Harmony / BepInEx /
+in-process mods), there's no IFEO redirect, so updates apply
+whenever the user re-runs the installer; CAMM v0.5 will add an
+opt-in "update-only IFEO" so installer-only mods can get the same
+update-on-launch behavior. Either way, no more "please re-download
+the latest build" notes in your README — and your users don't need
+to install any .NET frameworks first.
 
 Adopting CAMM is roughly 30 lines of `Program.cs` plus up to four
 small implementation classes against the CAMM library. The
@@ -69,11 +73,15 @@ game accessibility mods.
 
 CAMM is the answer to "what if we just wrote that infrastructure
 once?" The piece that makes it specifically worth using, even if
-you'd otherwise hand-roll a zip-based release: CAMM-built mods
-auto-update on every game launch via an IFEO redirect, with no
-"please re-download the latest build" notes in your README. That's
-the irreducible value; everything else is a value-add you can opt
-into or out of via the manifest.
+you'd otherwise hand-roll a zip-based release: CAMM-built launcher-
+mode mods auto-update on every game launch via an IFEO redirect,
+with no "please re-download the latest build" notes in your README.
+Installer-only mods today update when the user re-runs the
+installer; v0.5 will close that gap with an opt-in "update-only
+IFEO" so installer-only adopters get the same update-on-launch
+behavior. Either way, the user doesn't have to track down a fresh
+zip — that's the irreducible value; everything else is a value-add
+you can opt into or out of via the manifest.
 
 That single-binary-multiple-modes design is also where the
 **chameleon** in the name comes from. The same `.exe` is your
@@ -225,11 +233,13 @@ Once you've adopted CAMM, every CAMM-built launcher comes with:
   Windows Settings → Apps. The Modify button opens your
   update-channel picker.
 - **GitHub Releases auto-update**, with Stable / Latest / Off
-  channels. The launcher polls GitHub on every game launch and
-  applies updates with a `.pending` self-update swap. Once a user
-  has installed your CAMM-built mod once, they're on the auto-update
-  train indefinitely — no more "please re-download the latest
-  release" notes in your README.
+  channels. CAMM polls GitHub for newer releases every time the
+  launcher exe runs, and applies updates with a `.pending`
+  self-update swap. In launcher mode the IFEO redirect runs the
+  launcher on every game launch, so updates apply automatically.
+  In installer-only mode today, updates apply whenever the user
+  re-runs the installer; v0.5 will add an opt-in update-only IFEO
+  for installer-only adopters who want auto-update-on-launch too.
 - **An Azure Trusted Signing release pipeline template** so end
   users see "Verified Publisher: <you>" in the UAC prompt once you
   plug in a signing identity. (Unsigned installers also work; users
