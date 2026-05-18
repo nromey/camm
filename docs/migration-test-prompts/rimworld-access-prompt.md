@@ -38,14 +38,22 @@ Read in order:
    The manifest-reference's "Mode-selection cheat sheet" shows which
    fields belong to installer-only mode (leave `GameInstance` /
    `IfeoTargetExeNames` / `GameProcessNames` / `Sanitizer` /
-   `MarkerProtocol` null). Also note the v0.3.0 additions:
-   `PostInstallHook` (optional async hook receiving per-payload
-   install manifests, runs before "install complete" — useful for
-   game-side config edits CAMM doesn't model, e.g. RimWorld's
-   ModsConfig.xml), and mode-aware locale variants
-   (`<key>.InstallerOnly` keys override the base key when in
-   installer-only mode, addressing wizard copy that doesn't apply
-   without an IFEO redirect).
+   `MarkerProtocol` null). Note these recent additions:
+   - v0.3.0: `PostInstallHook` (optional async hook receiving
+     per-payload install manifests, runs before "install complete" —
+     useful for game-side config edits CAMM doesn't model, e.g.
+     RimWorld's ModsConfig.xml), and mode-aware locale variants
+     (`<key>.InstallerOnly` keys override the base key when in
+     installer-only mode).
+   - v0.4.0: `Dependencies` (declarative external-mod fetch — CAMM
+     checks for the dep at install time, prompts the user, and
+     fetches the latest release from GitHub Releases). RimWorld
+     Access requires the `brrainz.harmony` mod; CAMM's docs pitch
+     `Dependencies` as solving exactly that "user has to subscribe
+     to the Workshop item separately" UX cliff. Decide whether to
+     declare Harmony as a `ModDependency` and what `InstallPath` +
+     `SentinelFileName` to use. Also v0.4.0: `PreInstallHook`,
+     symmetric to `PostInstallHook` but probably not relevant here.
 3. Civ VI Access's source for reference shape (launcher mode). Your
    installer-only adopter will look similar in structure but
    thinner — only `Program.cs` + manifest, no `IGameInstance` or
@@ -63,12 +71,14 @@ Read in order:
 Write a short fit-assessment that answers:
 
 1. Does installer-only CAMM apply to RimWorld Access? Concretely:
-   can CAMM v0.2.0's `ModPayloads` list deploy the right files to
-   the right places? (RimWorld looks for mods under
+   can CAMM's `ModPayloads` list deploy the right files to the right
+   places? (RimWorld looks for mods under
    `%USERPROFILE%\AppData\LocalLow\Ludeon Studios\RimWorld by
    Ludeon Studios\Mods\<modname>\` OR
    `%STEAM%\steamapps\common\RimWorld\Mods\<modname>\` —
-   pick one or document both.)
+   pick one or document both.) And does v0.4.0's `Dependencies`
+   field cleanly handle the Harmony requirement, or does that need
+   to stay a manual user step?
 2. What does the resulting CAMM-based adopter look like?
    File count, LOC, csproj boilerplate, manifest field-by-field.
 3. What doesn't apply (and should be null) — `IGameInstance`,
@@ -88,7 +98,7 @@ acceptance criteria:
 
 - A new launcher project (e.g. `installer/` or `RimWorldAccessInstaller/`)
   builds clean with `dotnet build` against CAMM as a submodule pinned
-  to `v0.3.0`.
+  to `v0.4.0`.
 - `dotnet run -- --version` runs and reports sensible output
   (mod name, install state, channel, project URL).
 - `dotnet run -- --wizard-test` opens the install wizard with

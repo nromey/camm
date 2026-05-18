@@ -30,15 +30,22 @@ Read in order:
    the launcher exe). `docs/getting-started.md` walks through the
    adoption steps; `docs/manifest-reference.md` documents every
    manifest field.
-2. CAMM's `CHANGELOG.md` (latest entry — v0.3.0). v0.3.0 introduced
-   a few features specifically relevant to Civ V Access's shape: an
-   optional `OverwriteStrategy.BackupAndReplace` for payloads that
-   replace files the game ships with (engine DLLs, scripting host
-   DLLs), and a `LogTailEnabled` derived property that lets launcher-
-   mode adopters skip the log-tail bridge if they speak in-process
-   via their own Tolk binding rather than through CAMM's log-tail
-   loop. Read the v0.3.0 entry and judge whether either applies to
-   Civ V Access.
+2. CAMM's `CHANGELOG.md` (latest entries — v0.3.0 and v0.4.0).
+   Several features added in these releases are relevant to Civ V
+   Access's shape:
+   - v0.3.0: `OverwriteStrategy.BackupAndReplace` for payloads that
+     replace files the game ships with (engine DLLs, scripting host
+     DLLs); `LogTailEnabled` derived property that lets launcher-
+     mode adopters skip the log-tail bridge if they speak
+     in-process via their own Tolk binding rather than through
+     CAMM's log-tail loop.
+   - v0.4.0: `PreInstallHook` — the symmetric partner to
+     `PostInstallHook`, runs before payload extraction. CAMM's docs
+     pitch it as useful for adopters migrating from a pre-CAMM
+     deployed state. Civ V Access's existing `deploy.ps1` writes
+     its own `.original` backups under a different naming
+     convention; consider whether `PreInstallHook` applies here.
+   Read both CHANGELOG entries and judge what applies.
 3. The Civ VI Access `CivViAccess/` directory:
    - `Program.cs` (the thin shim: manifest construct + RunAsync call)
    - `CivViGameInstance.cs` (implements `Camm.IGameInstance`: paths to
@@ -65,7 +72,7 @@ Civ V Access. Produce a working CAMM-based Civ V Access launcher
 with these acceptance criteria:
 
 - Builds clean with `dotnet build` against CAMM as a submodule
-  pinned to `v0.3.0`.
+  pinned to `v0.4.0`.
 - `dotnet run -- --version` runs and reports sensible output
   (Civ V Access version, install state, channel, project URL).
 - `dotnet run -- --wizard-test` opens the install wizard with
