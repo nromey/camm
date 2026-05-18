@@ -297,6 +297,46 @@ public static class CammHost
         // ---- Launcher mode below this line. GameInstance is non-null. ----
         var gameInstance = manifest.GameInstance!;
 
+        // Transparent invocation in launcher mode (IFEO-spawned re-entry).
+        //
+        // Civ-VI-style games often launch an internal child exe at
+        // runtime (CivilizationVI.exe -> CivilizationVI_DX12.exe). When
+        // BOTH exes are registered in IFEO, the child spawn re-fires IFEO
+        // and Windows starts a second launcher process with the child exe
+        // path as args[0]. Without this short-circuit, the second
+        // launcher would run the full launcher-mode flow (log-tail, game
+        // lifecycle wait), and tailing the same Lua.log twice causes
+        // every screen-reader announcement to be routed to Tolk twice
+        // ~100 ms apart — fast keyboard nav becomes unintelligible.
+        //
+        // The single-instance mutex below catches user-initiated dups
+        // (double-clicking a shortcut, leaked self-update relaunch). It
+        // does NOT catch this case correctly: blocking Process B would
+        // also prevent it from spawning the IFEO-targeted child exe, so
+        // the game itself would fail to launch. Process B is doing
+        // legitimate work — it just shouldn't log-tail. The right fix is
+        // to spawn-and-exit before reaching the mutex, exactly the way
+        // installer-only mode (above) already handles transparent
+        // invocation. Mirroring that pattern here.
+        if (transparentInvocation
+            && !string.IsNullOrEmpty(transparentGamePath)
+            && File.Exists(transparentGamePath))
+        {
+            Log($"Spawning {transparentGamePath} (launcher-mode transparent invocation; log-tail owned by parent launcher).");
+            try
+            {
+                var transparentPid = ProcessLauncher.LaunchBypassingIfeo(
+                    transparentGamePath, passthroughGameArgs);
+                Logger.Info($"  LaunchBypassingIfeo returned pid={transparentPid}");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Logger.Exception("LaunchBypassingIfeo (launcher-mode transparent) threw", ex);
+                return 1;
+            }
+        }
+
         // Single-instance gate. Two launchers running against the same
         // adopter both tail the game's Lua.log and both route every
         // marker-prefixed line to Tolk independently. The user hears

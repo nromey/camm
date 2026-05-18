@@ -11,6 +11,38 @@ can consume CAMM without reading the civ-vi-access source. Pre-1.0
 means any release can break API; consumers pin to a tag SHA and
 upgrade when ready.
 
+## 0.5.2 — 2026-05-18 — Transparent invocation short-circuit in launcher mode
+
+Bug fix paired with v0.5.1: the mutex caught user-initiated launcher
+dups, but it did NOT correctly handle the case where the game's own
+internal process tree re-fires IFEO. Civ-VI-style games (and likely
+others) launch an internal child exe at runtime — Civ VI bootstrap
+`CivilizationVI.exe` spawns `CivilizationVI_DX12.exe` for the actual
+DX12 game process. When both exes are registered in IFEO, the
+child spawn re-fires IFEO and Windows starts a second launcher
+process with the child exe path as `args[0]`.
+
+In launcher mode pre-v0.5.2, that second launcher ran the full flow
+including the log-tail loop, meaning two launchers tailed the same
+`Lua.log` and every screen-reader announcement was routed to Tolk
+twice. v0.5.1's mutex would catch that on the second launcher's
+acquire, but blocking it would also prevent it from spawning the
+IFEO-targeted child exe — the game itself would fail to launch.
+
+### Fix
+
+Launcher mode now mirrors installer-only mode's transparent-
+invocation handling: if `args[0]` is an IFEO-registered exe path,
+spawn it via `ProcessLauncher.LaunchBypassingIfeo` and exit
+immediately. No mutex acquire, no log-tail loop, no lifecycle
+wait — the user-launched parent launcher already owns all of
+that for the whole game session.
+
+Placement: short-circuit is BEFORE the mutex check, so
+transparent invocations never try to acquire. The mutex remains
+the right defense for genuinely-duplicate user-initiated launches
+(double-clicked shortcut, leaked self-update relaunch).
+
 ## 0.5.1 — 2026-05-18 — Single-instance launcher gate
 
 Bug fix discovered during a CivViAccess screen-reader test session.
