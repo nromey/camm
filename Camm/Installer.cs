@@ -108,6 +108,50 @@ public static class Installer
                 "Did the assembly name change without updating manifest.LauncherExeName?");
         }
 
+        // Pre-install hook (v0.4.0). Adopter-provided scripted work
+        // that needs to happen before payloads + dependencies extract.
+        // Use cases: migrating from a pre-CAMM deployed state, fetching
+        // a non-GitHub-Releases dependency, transforming a config file
+        // before BackupAndReplace runs. Throws → install fails.
+        if (manifest.PreInstallHook is not null)
+        {
+            log("Running pre-install hook...");
+            try
+            {
+                manifest.PreInstallHook().GetAwaiter().GetResult();
+                log("Pre-install hook completed.");
+            }
+            catch (Exception ex)
+            {
+                Logger.Exception("Pre-install hook threw", ex);
+                log($"Pre-install hook failed: {ex.Message}.");
+                throw;
+            }
+        }
+
+        // External-mod dependencies (v0.4.0). For each declared dep,
+        // check sentinel, prompt user, fetch from GitHub Releases,
+        // extract. OperationCanceledException from inside aborts the
+        // whole install (user cancelled at the dep prompt or the
+        // failure dialog).
+        if (manifest.HasDependencies)
+        {
+            log($"Checking {manifest.Dependencies!.Count} declared dependency(ies)...");
+            foreach (var dep in manifest.Dependencies)
+            {
+                try
+                {
+                    DependencyInstaller.EnsureAsync(dep, log, speak).GetAwaiter().GetResult();
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    Logger.Exception($"DependencyInstaller.EnsureAsync threw for '{dep.Name}'", ex);
+                    throw;
+                }
+            }
+        }
+
         // Deploy each ModPayload to its destination, replacing any
         // prior install (read the per-payload manifest from a prior
         // run and clean up its files first so we don't leave orphans

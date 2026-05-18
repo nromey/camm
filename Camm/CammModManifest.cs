@@ -159,6 +159,41 @@ public sealed class CammModManifest
     // again.
     public Func<IReadOnlyDictionary<string, PayloadInstallManifest>, Task>? PostInstallHook { get; init; }
 
+    // ---------------------------------------------------------------
+    //  v0.4.0: dependency installation + pre-install hook
+    // ---------------------------------------------------------------
+
+    // Optional list of external mods this adopter depends on
+    // (Harmony for RimWorld, BepInEx / MelonLoader / IPA / etc.).
+    // CAMM checks each dependency's sentinel at install time and,
+    // with user consent, fetches the latest release from GitHub and
+    // extracts it to the dependency's InstallPath. See
+    // Camm/DependencyInstaller.cs for the runtime behavior.
+    //
+    // Dependencies are install-time only — CAMM does not auto-update
+    // them. They also survive adopter-mod uninstall (shared resources
+    // another mod may need).
+    public IReadOnlyList<ModDependency>? Dependencies { get; init; }
+
+    // Optional async hook invoked BEFORE payload extraction and
+    // dependency installation. Symmetric partner to PostInstallHook.
+    // Use for arbitrary scripted setup: migrating from a pre-CAMM
+    // deployed state (e.g. deploy.ps1 artifacts), fetching a
+    // non-GitHub-Releases dependency, transforming a config file
+    // before the install lands.
+    //
+    // Throwing from the hook fails the install (wizard's Done page
+    // shows FailureBody). Idempotent / safe to re-run is the
+    // adopter's responsibility.
+    //
+    // CammHost.Manifest is statically available from inside the hook
+    // if you need to read manifest fields.
+    public Func<Task>? PreInstallHook { get; init; }
+
+    // True when this manifest declares at least one dependency.
+    // Convenience for diagnostics and conditional log lines.
+    public bool HasDependencies => Dependencies is { Count: > 0 };
+
     // True when the manifest doesn't drive a game-launch flow. CAMM's
     // RunAsync exits cleanly after install/update/uninstall flow
     // completes rather than locating + launching the target game.

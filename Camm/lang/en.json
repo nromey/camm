@@ -111,5 +111,23 @@
   "Speech.UpdateToVersionSuffix": ".",
   "Speech.GameNotFound": "Could not find __TARGET_GAME__ at the expected location. If __TARGET_LAUNCHER__ is installed somewhere non-default, run the launcher via __TARGET_LAUNCHER__'s Play button (the IFEO redirect will pass the right path).",
   "Speech.ForegroundFailed": "Could not focus __TARGET_GAME__. Press Alt+Tab to switch to the game window.",
-  "Speech.GameStartupTimeout": "__TARGET_GAME__ did not start within 2 minutes."
+  "Speech.GameStartupTimeout": "__TARGET_GAME__ did not start within 2 minutes.",
+
+  "Dependency.Prompt.Title": "__DISPLAY_NAME__ — Required component",
+  "Dependency.Prompt.Instruction": "__DISPLAY_NAME__ needs __DEPENDENCY_DISPLAY_NAME__ to function.",
+  "Dependency.Prompt.Content": "Download __DEPENDENCY_DISPLAY_NAME__ from GitHub and install it now? You only need to do this once.",
+  "Dependency.Prompt.InstallButton.Heading": "Install __DEPENDENCY_DISPLAY_NAME__",
+  "Dependency.Prompt.InstallButton.Note": "Download and install automatically (about __DEPENDENCY_SIZE__).",
+  "Dependency.Prompt.SkipButton.Heading": "Skip — I'll install it manually",
+  "Dependency.Prompt.SkipButton.Note": "__DISPLAY_NAME__ may not function until __DEPENDENCY_DISPLAY_NAME__ is installed separately.",
+  "Dependency.Prompt.CancelButton.Heading": "Cancel install",
+  "Dependency.Prompt.CancelButton.Note": "Don't install __DISPLAY_NAME__ either.",
+  "Dependency.Downloading": "Downloading __DEPENDENCY_DISPLAY_NAME__...",
+  "Dependency.Installing": "Installing __DEPENDENCY_DISPLAY_NAME__...",
+  "Dependency.Installed": "__DEPENDENCY_DISPLAY_NAME__ installed.",
+  "Dependency.Skipped": "__DEPENDENCY_DISPLAY_NAME__ was skipped. __DISPLAY_NAME__ may not function until it is installed separately.",
+  "Dependency.DownloadFailed.Title": "__DEPENDENCY_DISPLAY_NAME__ download failed",
+  "Dependency.DownloadFailed.Content": "Could not download __DEPENDENCY_DISPLAY_NAME__: __ERROR_MESSAGE__",
+  "Dependency.DownloadFailed.RetryButton.Heading": "Retry download",
+  "Dependency.DownloadFailed.RetryButton.Note": "Try fetching __DEPENDENCY_DISPLAY_NAME__ from GitHub again."
 }

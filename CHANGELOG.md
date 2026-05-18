@@ -11,6 +11,141 @@ can consume CAMM without reading the civ-vi-access source. Pre-1.0
 means any release can break API; consumers pin to a tag SHA and
 upgrade when ready.
 
+## 0.4.0 — 2026-05-18 — Dependencies + PreInstallHook
+
+Two API-additive feature additions driven by the v0.3.0 dual-track
+AI-readability test gaps. Existing v0.3.x adopters upgrade by
+bumping the submodule SHA and rebuilding; no `Program.cs` changes
+required.
+
+### `Dependencies` on `CammModManifest`
+
+A new `IReadOnlyList<ModDependency>?` field declaring external
+mods the adopter requires (Harmony for RimWorld, BepInEx for
+Unity-based games, MelonLoader for Mono games, IPA for Beat
+Saber, anything else that follows the "in-process mod loader
+needs a bootstrap layer" shape). Each `ModDependency` is:
+
+    new ModDependency(
+        Name: "brrainz.harmony",
+        DisplayName: "Harmony",
+        GitHubReleasesOwner: "pardeike",
+        GitHubReleasesRepo: "HarmonyRimWorld",
+        AssetNamePattern: "Harmony-{0}.zip",
+        InstallPath: () => @"C:\...\Mods\Harmony",
+        SentinelFileName: "About/About.xml")
+    { ZipRootStripPrefix = "*" }
+
+At install time, `Installer.ApplyInstall` checks each dependency's
+sentinel. Missing → prompt user (Install / Skip / Cancel) → fetch
+latest release metadata from
+`api.github.com/repos/<owner>/<repo>/releases/latest` → download
+the asset matching `AssetNamePattern` → extract.
+
+Extraction supports `.zip` (with optional `ZipRootStripPrefix` for
+GitHub's common "wrap content in a tag-named folder" shape, where
+`"*"` strips whatever the first directory turns out to be) and
+bare `.dll` (single-file deps). Other formats fail with a clear
+error in v0.4.
+
+Per-dep manifest persisted at
+`%LocalAppData%\<adopter>\dep-<Name>.json` with installed version,
+file list, and source URL. Not used for uninstall in v0.4 (deps
+survive adopter-mod uninstall by design — they're shared resources)
+but available for future versions (managed dependency updates,
+`--dependency-status` diagnostics).
+
+Network and extraction failures show a retry / skip / cancel
+dialog. No silent fallbacks; the user always knows when a
+dependency is missing.
+
+User consent is mandatory. CAMM never silently network-fetches a
+dependency. The prompt shows download size pulled live from the
+GitHub Releases API.
+
+`DependencyInstaller` is a new public class. `ModDependency` and
+`DependencyInstallManifest` are new public types. `Strings.Get`
+gains three substitution tokens: `__DEPENDENCY_DISPLAY_NAME__`,
+`__DEPENDENCY_SIZE__`, `__ERROR_MESSAGE__`. Locale catalog gains
+the `Dependency.*` keys for the prompts and status messages.
+
+### `PreInstallHook` on `CammModManifest`
+
+Symmetric partner to v0.3.0's `PostInstallHook`. `Func<Task>?`
+that runs after launcher-exe + Tolk extraction, before dependency
+installation, before payload extraction.
+
+Use cases:
+
+  * Migrating from a pre-CAMM deployed state (e.g. Civ V Access's
+    `deploy.ps1` artifacts — detect `lua51_original.dll` and the
+    sibling-directory engine backup, restore vanilla state so
+    CAMM's `BackupAndReplace` doesn't misidentify the proxy DLL as
+    vanilla on first install).
+  * Fetching a non-GitHub-Releases dependency. `Dependencies`
+    covers GitHub Releases sources; PreInstallHook covers
+    everything else (Workshop subscription URLs, direct downloads,
+    bundled-with-adopter zips).
+  * Transforming a config file before payloads land.
+
+Throws → install fails (wizard's Done page shows FailureBody).
+Idempotent / safe to re-run is the adopter's responsibility —
+re-install / repair will call it again.
+
+`CammHost.Manifest` is statically available from inside the hook.
+
+### `Installer.ApplyInstall` flow
+
+New step ordering:
+
+  1. Copy launcher exe → install dir (unchanged).
+  2. Extract Tolk sidecars → install dir (unchanged).
+  3. **`PreInstallHook?.Invoke()`** (NEW).
+  4. **Foreach `Dependency`: `DependencyInstaller.EnsureAsync(dep)`**
+     (NEW).
+  5. Foreach `ModPayload`: `ExtractTo(payload)` (unchanged).
+  6. Register IFEO (launcher mode only) (unchanged).
+  7. Register Apps & Features (unchanged).
+  8. `PostInstallHook?.Invoke(installedPayloads)` (unchanged
+     v0.3.0).
+  9. Speak "installed" (unchanged).
+
+`OperationCanceledException` from PreInstallHook or
+DependencyInstaller bubbles out and aborts the install — wizard
+shows the cancellation cleanly, nothing partial-state.
+
+### What's NOT in v0.4 (deferred)
+
+* **Managed dependency updates.** Install-time presence check
+  only; deps stay at whatever version was installed.
+* **Dependency version constraints.** No "Harmony >= 2.3"
+  semantics — whatever's at the dep repo's Latest pointer is what
+  gets installed.
+* **Dependency uninstall.** Deps survive adopter-mod uninstall
+  (shared resources another mod may need).
+* **Non-GitHub-Releases dependency sources.** PreInstallHook
+  covers these; `Dependencies` is GitHub-Releases-only for v0.4.
+* **`camm new` scaffolding tool.** Cited by both v0.3 test
+  reports; deferred to v0.5+.
+
+### Docs
+
+* `CAMM_V040_PLAN.md` (new at repo root) — the design doc this
+  release was implemented against.
+
+Full docs pass (README, getting-started, manifest-reference,
+Status / cheat-sheet updates) lands as a follow-up commit, not in
+the v0.4.0 tag itself.
+
+### Test plan
+
+* RimWorld Access dual-track migration test re-run with v0.4 to
+  validate declarative `Dependencies` resolves the
+  "manually-subscribe-to-Harmony" UX cliff.
+* Civ V Access dual-track migration test re-run with v0.4 to
+  validate `PreInstallHook` handles the pre-CAMM `deploy.ps1`
+  migration cleanly.
+
 ## 0.3.1 — 2026-05-18 — app.manifest template fix (ship-stopper)
 
 Critical patch. The `templates/app.manifest` file shipped in v0.2.1

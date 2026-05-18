@@ -5,6 +5,10 @@ using System.Text.Json.Serialization;
 
 namespace Camm.Localization;
 
+// (DependencyTokens lives in the Camm namespace; we read it from
+// Substitute to inject per-prompt dependency tokens into locale
+// strings. Same-assembly internal access.)
+
 // Locale catalog + lookup. Translatable text in CAMM lives in
 // `lang/<culture>.json` files as flat dictionaries
 // ("Wizard.Welcome.Heading": "Install __DISPLAY_NAME__").
@@ -163,6 +167,14 @@ public static class Strings
         try { installDir = Installer.DefaultInstallDir; }
         catch { /* OperatingSystem may not be windows in unit tests */ }
 
+        // Per-prompt dependency tokens — null when not inside a
+        // DependencyInstaller prompt/status flow, populated by the
+        // installer right before it calls Strings.Get. Substituted
+        // here so the locale catalog stays declarative.
+        var depDisplayName = DependencyTokens.CurrentDependencyDisplayName ?? "";
+        var depSize = DependencyTokens.CurrentDependencySize ?? "";
+        var depError = DependencyTokens.CurrentDependencyErrorMessage ?? "";
+
         return template
             .Replace("__DISPLAY_NAME__", m.DisplayName)
             .Replace("__TARGET_GAME__", m.TargetGameDisplayName)
@@ -171,7 +183,10 @@ public static class Strings
             .Replace("__INSTALL_DIR__", installDir)
             .Replace("__LOCAL_APP_DATA_FOLDER__", m.LocalAppDataFolderName)
             .Replace("__LAUNCHER_EXE__", m.LauncherExeName)
-            .Replace("__VERSION__", SemVer.Current().ToString());
+            .Replace("__VERSION__", SemVer.Current().ToString())
+            .Replace("__DEPENDENCY_DISPLAY_NAME__", depDisplayName)
+            .Replace("__DEPENDENCY_SIZE__", depSize)
+            .Replace("__ERROR_MESSAGE__", depError);
     }
 }
 
