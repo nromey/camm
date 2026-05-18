@@ -159,7 +159,7 @@ public static class CammHost
             }
         }
 
-        // ---- Transparent invocation (launcher mode only) ----
+        // ---- Transparent invocation (any mode with IfeoTargetExeNames set) ----
         bool transparentInvocation = false;
         string transparentGamePath = "";
         string[] passthroughGameArgs = Array.Empty<string>();
@@ -256,9 +256,39 @@ public static class CammHost
             Console.WriteLine("No dev-mode source dir found near launcher exe; using installed payload as-is.");
         }
 
-        // ---- Installer-only mode exits here. No game launch. ----
+        // ---- Installer-only mode handling. ----
+        // Two sub-cases:
+        //   1. Update-only IFEO: we were transparently invoked by the IFEO
+        //      redirect on the game's launch (IfeoTargetExeNames is set in
+        //      installer-only mode = the v0.5 update-only-IFEO opt-in).
+        //      Update check has already run above; spawn the real game via
+        //      DEBUG_PROCESS bypass and exit immediately. No log-tail, no
+        //      lifecycle wait, no foreground handoff — we want the user to
+        //      experience the game launch as if CAMM weren't there.
+        //   2. Plain installer-only (no IFEO): user double-clicked the
+        //      installer exe, or ran it from Apps & Features. Print
+        //      completion message and exit.
         if (manifest.IsInstallerOnly)
         {
+            if (transparentInvocation
+                && !string.IsNullOrEmpty(transparentGamePath)
+                && File.Exists(transparentGamePath))
+            {
+                Log($"Spawning {transparentGamePath} (installer-only update-on-launch IFEO).");
+                try
+                {
+                    var spawnedPid = ProcessLauncher.LaunchBypassingIfeo(
+                        transparentGamePath, passthroughGameArgs);
+                    Logger.Info($"  LaunchBypassingIfeo returned pid={spawnedPid}");
+                    return 0;
+                }
+                catch (Exception ex)
+                {
+                    Logger.Exception("LaunchBypassingIfeo (installer-only) threw", ex);
+                    return 1;
+                }
+            }
+
             Log($"{manifest.DisplayName} install / update flow complete. " +
                 "(Installer-only mode — no game-launch step.)");
             return 0;

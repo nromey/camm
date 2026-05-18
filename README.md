@@ -22,12 +22,13 @@ In **launcher mode**, CAMM adds a Windows **Image File Execution
 Options (IFEO)** redirect so the launcher exe runs first on every
 game launch — that's where the "auto-update on every game launch"
 story comes from. In **installer-only mode** (Harmony / BepInEx /
-in-process mods), there's no IFEO redirect, so updates apply
-whenever the user re-runs the installer; CAMM v0.5 will add an
-opt-in "update-only IFEO" so installer-only mods can get the same
-update-on-launch behavior. Either way, no more "please re-download
-the latest build" notes in your README — and your users don't need
-to install any .NET frameworks first.
+in-process mods), CAMM v0.5 added an opt-in "update-only IFEO":
+set `IfeoTargetExeNames` on an otherwise-installer-only manifest
+and CAMM registers the same redirect, but skips the launcher
+process entirely — just runs the update check, spawns the game, and
+exits. Either way, no more "please re-download the latest build"
+notes in your README — and your users don't need to install any
+.NET frameworks first.
 
 Adopting CAMM is roughly 30 lines of `Program.cs` plus up to four
 small implementation classes against the CAMM library. The
@@ -73,15 +74,15 @@ game accessibility mods.
 
 CAMM is the answer to "what if we just wrote that infrastructure
 once?" The piece that makes it specifically worth using, even if
-you'd otherwise hand-roll a zip-based release: CAMM-built launcher-
-mode mods auto-update on every game launch via an IFEO redirect,
-with no "please re-download the latest build" notes in your README.
-Installer-only mods today update when the user re-runs the
-installer; v0.5 will close that gap with an opt-in "update-only
-IFEO" so installer-only adopters get the same update-on-launch
-behavior. Either way, the user doesn't have to track down a fresh
-zip — that's the irreducible value; everything else is a value-add
-you can opt into or out of via the manifest.
+you'd otherwise hand-roll a zip-based release: CAMM-built mods
+auto-update on every game launch via an IFEO redirect, with no
+"please re-download the latest build" notes in your README.
+Launcher-mode adopters get this by default; installer-only
+adopters opt in via v0.5's update-only-IFEO mode (set
+`IfeoTargetExeNames`, leave `GameInstance` null). Either way, the
+user doesn't have to track down a fresh zip — that's the
+irreducible value; everything else is a value-add you can opt into
+or out of via the manifest.
 
 That single-binary-multiple-modes design is also where the
 **chameleon** in the name comes from. The same `.exe` is your
@@ -235,11 +236,11 @@ Once you've adopted CAMM, every CAMM-built launcher comes with:
 - **GitHub Releases auto-update**, with Stable / Latest / Off
   channels. CAMM polls GitHub for newer releases every time the
   launcher exe runs, and applies updates with a `.pending`
-  self-update swap. In launcher mode the IFEO redirect runs the
-  launcher on every game launch, so updates apply automatically.
-  In installer-only mode today, updates apply whenever the user
-  re-runs the installer; v0.5 will add an opt-in update-only IFEO
-  for installer-only adopters who want auto-update-on-launch too.
+  self-update swap. Launcher mode runs the launcher on every game
+  launch via the IFEO redirect. Installer-only adopters can opt into
+  the same behavior with v0.5's update-only-IFEO mode
+  (`IfeoTargetExeNames` set, `GameInstance` null) — CAMM intercepts
+  briefly, applies updates, spawns the game, exits.
 - **An Azure Trusted Signing release pipeline template** so end
   users see "Verified Publisher: <you>" in the UAC prompt once you
   plug in a signing identity. (Unsigned installers also work; users
@@ -283,7 +284,7 @@ The short version, once you've decided CAMM is right for your mod:
 1. Add CAMM as a git submodule:
    `git submodule add https://github.com/nromey/camm.git camm`,
    then check out the latest tag inside the submodule (currently
-   `v0.4.0`).
+   `v0.5.0`).
 2. In your launcher project's csproj:
    - Set `<TargetFramework>net10.0-windows</TargetFramework>` +
      `<PlatformTarget>x64</PlatformTarget>`.
@@ -331,18 +332,18 @@ second source of truth.
 
 ## Status
 
-**v0.4.0** — public surface stable, three operating modes
-(launcher with log-tail, launcher without log-tail, installer-only),
-and the optional v0.3.0 / v0.4.0 features (backup-and-replace,
-post-install hook, pre-install hook, declarative external-mod
-dependencies, mode-aware locale variants). The first adopter is
+**v0.5.0** — public surface stable, four operating modes (launcher
+with log-tail, launcher without log-tail, installer-only,
+installer-only with update-on-launch IFEO), and the optional
+v0.3.0 / v0.4.0 / v0.5.0 features (backup-and-replace, post-install
+hook, pre-install hook, declarative external-mod dependencies,
+mode-aware locale variants, update-only IFEO). The first adopter is
 [civ-vi-access](https://github.com/nromey/civ-vi-access). Two more
-adopter shapes were validated via AI-readability tests against
-v0.3.0: Civ V Access in launcher-without-log-tail mode (with
-backup-and-replace) and RimWorld Access in installer-only mode
-(with the post-install hook). The v0.4.0 features will go through
-the same dual-track validation before they're considered
-"adopter-proven."
+adopter shapes were validated via AI-readability tests across
+v0.3.0 and v0.4.0: Civ V Access in launcher-without-log-tail mode
+(with backup-and-replace + pre-install hook) and RimWorld Access in
+installer-only mode (with post-install hook + declarative
+Harmony dependency).
 
 Pre-1.0 means minor versions may introduce additive API changes.
 Consuming mods pin to a tag SHA via git submodule and upgrade on

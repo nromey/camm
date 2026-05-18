@@ -25,19 +25,26 @@ The manifest's fields select one of three operating modes:
   scripting context). Saves you from writing two seam classes that
   CAMM would never call.
 - **Installer-only mode**: `GameInstance` null. CAMM installs +
-  registers in Apps & Features, then exits. The install + update
-  path is the entire feature surface; no game launch ever happens
-  via CAMM, and no IFEO redirect is registered. Updates apply
-  whenever the user re-runs the installer exe — auto-update on
-  game launch is launcher-mode-only in v0.4.x. (v0.5 will add an
-  opt-in update-only IFEO for installer-only adopters who want
-  parity.) Harmony / BepInEx / MelonLoader shape.
+  registers in Apps & Features, then exits. No game launch ever
+  happens via CAMM. By default no IFEO redirect either — updates
+  apply when the user re-runs the installer exe.
+- **Installer-only mode with update-on-launch IFEO** (v0.5+):
+  `GameInstance` null + `IfeoTargetExeNames` non-null. CAMM
+  registers an IFEO redirect on the target game's exe, and on every
+  game launch the launcher briefly runs to apply any pending update
+  before spawning the real game. No log-tail, no lifecycle wait, no
+  foreground handoff — the user experiences the launch as if CAMM
+  weren't there. Opt in to this if you want auto-update parity with
+  launcher mode in an installer-only adopter shape.
 
-Two derived properties:
+Three derived properties:
 - `IsInstallerOnly` → true when `GameInstance is null`.
 - `LogTailEnabled` → true when both `Sanitizer` and `MarkerProtocol`
   are set. False otherwise (installer-only mode OR launcher mode
   without log-tail).
+- `UpdateOnlyIfeoEnabled` → true when installer-only mode is combined
+  with a non-empty `IfeoTargetExeNames`. v0.5+; selects between the
+  two installer-only sub-modes.
 
 The mode-selection guide and "which fields apply" matrix below
 explain which manifest fields belong to which mode.
@@ -233,20 +240,29 @@ LauncherAssetNamePattern = "CivViAccess-{0}.exe"
 // Matches: CivViAccess-0.3.0.exe, CivViAccess-0.3.1.exe, ...
 ```
 
-## Launcher-mode-only fields
+## Launcher-mode and update-only-IFEO fields
 
-Set these for launcher mode. Leave null for installer-only mode.
+Set these for launcher mode. Leave null for plain installer-only
+mode. `IfeoTargetExeNames` is the exception — see its note below.
 
 ### `IfeoTargetExeNames : string[]?`
 
 The target-game exe filenames CAMM's IFEO redirect intercepts. When
 the user launches one of these from Steam (or any other path), the
-OS prepends your launcher to the command line. Null/empty = no
-IFEO redirect installed (installer-only mode).
+OS prepends your launcher to the command line.
 
 ```csharp
 IfeoTargetExeNames = new[] { "CivilizationVI.exe", "CivilizationVI_DX12.exe" }
 ```
+
+**Mode interaction (v0.5+):** this field is required in launcher
+mode, optional in installer-only mode. Setting it in installer-only
+mode opts into "update-on-launch IFEO" — CAMM registers the redirect
+but skips the rest of the launcher-mode flow (no log-tail, no
+lifecycle wait, no game-launch announcement). On every game launch,
+CAMM runs the update check and then spawns the real game. Leave
+null to fall back to plain installer-only mode (updates apply only
+when the user re-runs the installer exe).
 
 Civ VI ships two binaries (DX11 + DX12 variants); most games have
 one. Match against the actual exe filenames the game ships, not the
@@ -488,6 +504,15 @@ starts the log-tail speech bridge only when this is true; otherwise
 launcher mode still spawns the game and waits for lifecycle, but
 without reading its log file for speech-bound lines.
 
+### `UpdateOnlyIfeoEnabled : bool` *(v0.5.0)*
+
+True when `IsInstallerOnly` is true AND `IfeoTargetExeNames` has
+at least one entry. Selects between the two installer-only sub-
+modes: plain installer-only (false — no IFEO redirect, user
+re-runs installer for updates) vs. installer-only with
+update-on-launch (true — IFEO redirect on the game's exe applies
+updates before each launch).
+
 ### `HasDependencies : bool` *(v0.4.0)*
 
 True when `Dependencies` is non-null and non-empty. Convenience for
@@ -603,31 +628,38 @@ one file; CAMM extracts it into the parent.
 ## Mode-selection cheat sheet
 
 ```
-                            launcher    | launcher       | installer-
-                            +log-tail   | (no log-tail)  | only
-                            ----------- | -------------- | ----------
-LocalAppDataFolderName       required   |   required     | required
-LauncherExeName              required   |   required     | required
-UserAgent                    required   |   required     | required
-AppsAndFeaturesKeyName       required   |   required     | required
-DisplayName                  required   |   required     | required
-Publisher                    required   |   required     | required
-ModPayloads                  required   |   required     | required
-TargetGameDisplayName        required   |   required     | required
-TargetGameLauncherName     default OK   | default OK     | default OK
-ProjectUrl                 optional     | optional       | optional
-GitHubReleasesOwner        optional*    | optional*      | optional*
-GitHubReleasesRepo         optional*    | optional*      | optional*
-LauncherAssetNamePattern   optional*    | optional*      | optional*
-IfeoTargetExeNames           required   |   required     | LEAVE NULL
-GameProcessNames             required   |   required     | LEAVE NULL
-GameInstance                 required   |   required     | LEAVE NULL
-Sanitizer                    required   |  LEAVE NULL    | LEAVE NULL
-MarkerProtocol               required   |  LEAVE NULL    | LEAVE NULL
-PostInstallHook            optional     | optional       | optional
-PreInstallHook             optional     | optional       | optional
-Dependencies               optional     | optional       | optional
+                            launcher    | launcher       | installer-  | installer-only
+                            +log-tail   | (no log-tail)  | only        | +update-IFEO (v0.5)
+                            ----------- | -------------- | ----------- | -------------------
+LocalAppDataFolderName       required   |   required     | required    |   required
+LauncherExeName              required   |   required     | required    |   required
+UserAgent                    required   |   required     | required    |   required
+AppsAndFeaturesKeyName       required   |   required     | required    |   required
+DisplayName                  required   |   required     | required    |   required
+Publisher                    required   |   required     | required    |   required
+ModPayloads                  required   |   required     | required    |   required
+TargetGameDisplayName        required   |   required     | required    |   required
+TargetGameLauncherName     default OK   | default OK     | default OK  | default OK
+ProjectUrl                 optional     | optional       | optional    | optional
+GitHubReleasesOwner        optional*    | optional*      | optional*   | optional*
+GitHubReleasesRepo         optional*    | optional*      | optional*   | optional*
+LauncherAssetNamePattern   optional*    | optional*      | optional*   | optional*
+IfeoTargetExeNames           required   |   required     | LEAVE NULL  |   required
+GameProcessNames             required   |   required     | LEAVE NULL  | LEAVE NULL
+GameInstance                 required   |   required     | LEAVE NULL  | LEAVE NULL
+Sanitizer                    required   |  LEAVE NULL    | LEAVE NULL  | LEAVE NULL
+MarkerProtocol               required   |  LEAVE NULL    | LEAVE NULL  | LEAVE NULL
+PostInstallHook            optional     | optional       | optional    | optional
+PreInstallHook             optional     | optional       | optional    | optional
+Dependencies               optional     | optional       | optional    | optional
 ```
+
+`installer-only +update-IFEO` is the v0.5 opt-in: installer-only
+mode plus an `IfeoTargetExeNames` value. CAMM registers the IFEO
+redirect on the game's exe and runs the update check on every
+game launch before spawning the real game. `GameProcessNames`
+stays null in this mode because CAMM doesn't wait for the game's
+lifecycle — it spawns and exits.
 
 `*` = all three or none; auto-update is enabled only when all three
 are set.

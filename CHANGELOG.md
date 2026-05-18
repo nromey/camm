@@ -11,6 +11,85 @@ can consume CAMM without reading the civ-vi-access source. Pre-1.0
 means any release can break API; consumers pin to a tag SHA and
 upgrade when ready.
 
+## 0.5.0 — 2026-05-18 — Update-only IFEO + installer-only example
+
+Closes the gap the v0.4.0 RimWorld Access AI-readability test
+caught: the README pitched "auto-update on every game launch via
+IFEO" as CAMM's irreducible value, but installer-only mode didn't
+register the IFEO redirect, so updates only fired when the user
+manually re-ran the installer. v0.5.0 fixes the actual behavior
+gap, not just the docs.
+
+### Update-only IFEO for installer-only mode
+
+`IfeoTargetExeNames` is now optional in installer-only mode instead
+of strictly null. When an installer-only manifest sets it, CAMM:
+
+  * Registers the IFEO redirect on the named game executables at
+    install time (same code path as launcher mode — no new
+    registration logic).
+  * On every game launch, runs the launcher exe just long enough to
+    apply any pending update from GitHub Releases, then spawns the
+    real game via `ProcessLauncher.LaunchBypassingIfeo` and exits
+    immediately. No log-tail loop, no foreground handoff, no
+    lifecycle wait — the user experiences the game launch as if
+    CAMM weren't there.
+
+Opt in by adding one line to the manifest:
+
+```csharp
+IfeoTargetExeNames = new[] { "YourGame.exe" },
+```
+
+No new manifest fields. The combination of `GameInstance` null +
+`IfeoTargetExeNames` non-empty IS the signal. Exposed as the
+derived property `manifest.UpdateOnlyIfeoEnabled` for diagnostics.
+
+`GameProcessNames` stays null in this mode — CAMM doesn't wait for
+the game's lifecycle, so it doesn't need to know what process to
+watch.
+
+### docs/examples/installer-only-minimal/
+
+New directory. Three reference files (Program.cs, installer.csproj,
+app.manifest) showing the smallest possible installer-only adopter
+shape, with v0.4 / v0.5 opt-in fields documented inline as
+commented-out blocks. Closes the doc gap both v0.4 test reports
+flagged: "no end-to-end installer-only example exists in the docs
+themselves (only the launcher-mode civ-vi-access reference adopter
+on GitHub)."
+
+### Behind the scenes
+
+* `CammHost.RunAsync` gains a transparent-invocation branch inside
+  installer-only mode: if the launcher was invoked via IFEO and a
+  game path is present, spawn the game and exit; otherwise fall
+  through to the existing "install / update complete" exit.
+* The "transparent invocation (launcher mode only)" comment block
+  is updated — the detection now applies to any mode that sets
+  `IfeoTargetExeNames`.
+* `CammModManifest`'s top docstring expands to four modes
+  (launcher with log-tail, launcher without log-tail, installer-only,
+  installer-only with update-on-launch IFEO).
+* `docs/manifest-reference.md` mode-selection cheat sheet gains a
+  fourth column for the new sub-mode.
+
+### What's NOT in v0.5 (deferred)
+
+* **`camm new` scaffolding tool.** Cited by v0.3 and v0.4 test
+  reports. The new `docs/examples/installer-only-minimal/` plus the
+  existing civ-vi-access reference adopter cover most of the same
+  territory. Revisit if real adopters still feel the friction.
+* **Manifest validator** (`CammHost.Validate(manifest)`) — flagged
+  by the v0.4 Civ V Access report for catching generic-looking
+  sentinel filenames, hooks that mutate without dry-run, etc.
+  Defer to v0.6+ when there's a concrete failure mode to validate
+  against rather than speculative heuristics.
+* **Documented dependency asset patterns** (Harmony, BepInEx,
+  MelonLoader, IPA) — flagged by the v0.4 RimWorld report. The
+  example `Program.cs` shows the Harmony pattern; rest can land
+  in the post-v0.5 docs review.
+
 ## 0.4.0 — 2026-05-18 — Dependencies + PreInstallHook
 
 Two API-additive feature additions driven by the v0.3.0 dual-track

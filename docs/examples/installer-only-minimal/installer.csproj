@@ -1,0 +1,85 @@
+<!--
+  CAMM installer-only minimal example csproj — reference text, not
+  a buildable project on its own. Copy into your launcher project
+  directory alongside Program.cs and app.manifest. Adjust the
+  AssemblyName, Version, and EmbeddedResource paths for your mod.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <Version>0.1.0</Version>
+    <AssemblyName>YourModInstaller</AssemblyName>
+    <Product>Your Mod Display Name</Product>
+    <Company>Your Name</Company>
+
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <!-- Native AOT — single self-contained exe, no .NET runtime
+         install required. -->
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <!-- WinForms for the install wizard, plus the documented
+         escape hatch for combining WinForms with PublishAot. -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <_SuppressWinFormsTrimError>true</_SuppressWinFormsTrimError>
+
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <!-- Skip sibling source trees the SDK glob would otherwise pull
+       in (the CAMM submodule's own .cs files, your existing mod
+       project's .cs files, etc.). List every sibling directory
+       that contains C# you don't want in this launcher. -->
+  <PropertyGroup>
+    <DefaultItemExcludes>$(DefaultItemExcludes);..\camm\**;..\src\**;..\bin\**;..\obj\**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\camm\Camm\Camm.csproj" />
+  </ItemGroup>
+
+  <!-- Embed CAMM's x64 Tolk sidecars; TolkBootstrap extracts them
+       at runtime. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\camm\third_party\tolk\dist\x64\*.dll">
+      <LogicalName>tolk/%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <!-- Embed your mod payload — one ModPayload entry per destination,
+       LogicalName prefix matches ModPayload.Name in your manifest.
+       This example uses three explicit <EmbeddedResource> items
+       because the payload is assembled from multiple source dirs
+       (a Harmony DLL from a sibling build, an About/About.xml from
+       the repo, a native lib from a shared dir). All three share
+       the "mod/" prefix and extract under the same DefaultDestination.
+
+       Condition="Exists('...')" lets the build succeed when one of
+       the source files isn't there yet (e.g. the sibling project
+       hasn't been built). Inspect the final resource list before
+       shipping. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\About\About.xml"
+                      Condition="Exists('..\About\About.xml')">
+      <LogicalName>mod/About/About.xml</LogicalName>
+    </EmbeddedResource>
+
+    <EmbeddedResource Include="..\bin\$(Configuration)\net472\your_mod.dll"
+                      Condition="Exists('..\bin\$(Configuration)\net472\your_mod.dll')">
+      <LogicalName>mod/Assemblies/your_mod.dll</LogicalName>
+    </EmbeddedResource>
+
+    <EmbeddedResource Include="..\..\shared\native\prism.dll"
+                      Condition="Exists('..\..\shared\native\prism.dll')">
+      <LogicalName>mod/prism.dll</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+</Project>

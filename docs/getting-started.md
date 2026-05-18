@@ -35,9 +35,9 @@ From your mod's repo root:
 
 ```
 git submodule add https://github.com/nromey/camm.git camm
-cd camm && git checkout v0.4.0 && cd ..
+cd camm && git checkout v0.5.0 && cd ..
 git add camm .gitmodules
-git commit -m "Add CAMM v0.4.0 as a submodule"
+git commit -m "Add CAMM v0.5.0 as a submodule"
 ```
 
 That's all for this step. From here on, the rest of the work happens

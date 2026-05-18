@@ -5,7 +5,7 @@ namespace Camm;
 // CammHost.Initialize for direct-use scenarios). Every CAMM module
 // reads from it via CammHost.Manifest at call time.
 //
-// CAMM has three operating modes that the manifest's optional fields
+// CAMM has four operating modes that the manifest's optional fields
 // select:
 //
 //   * **Launcher mode with log-tail** — full chameleon launcher:
@@ -23,15 +23,26 @@ namespace Camm;
 //     Set GameInstance + IfeoTargetExeNames + GameProcessNames; leave
 //     Sanitizer and MarkerProtocol null.
 //
-//   * **Installer-only mode** — install wizard + auto-update only.
-//     Used by mods whose runtime lives inside the game's process
-//     (Harmony DLL, BepInEx plugin, Wwise mod, etc.) where there's
-//     no launcher exe to redirect through. Leave every launcher-mode
-//     field null; CAMM detects installer-only at startup and skips
-//     the locate-game / launch / log-tail / lifecycle path.
+//   * **Installer-only mode** — install wizard + Apps & Features
+//     registration. Updates apply when the user re-runs the installer
+//     exe (no IFEO redirect). Used by mods whose runtime lives inside
+//     the game's process (Harmony DLL, BepInEx plugin, Wwise mod) where
+//     there's no launcher relationship and the adopter doesn't want one.
+//     Leave every launcher-mode field null.
+//
+//   * **Installer-only mode with update-on-launch IFEO** (v0.5+) —
+//     installer-only mode plus an IFEO redirect on the game's exe
+//     that runs CAMM's update check on every game launch. When the
+//     user clicks Play in Steam, CAMM intercepts briefly, applies any
+//     pending update, then spawns the game and exits. No log-tail, no
+//     lifecycle wait — the user experiences the launch as if CAMM
+//     weren't there. Opt in by setting IfeoTargetExeNames in
+//     installer-only mode (and leaving GameInstance null).
 //
 // IsInstallerOnly is true when GameInstance is null. LogTailEnabled
 // is true when both Sanitizer AND MarkerProtocol are set.
+// UpdateOnlyIfeoEnabled is true when installer-only mode is combined
+// with a non-empty IfeoTargetExeNames.
 public sealed class CammModManifest
 {
     // ---------------------------------------------------------------
@@ -206,4 +217,13 @@ public sealed class CammModManifest
     // in launcher mode, CAMM still launches the game and waits for
     // its lifecycle, just without the log-tail loop.
     public bool LogTailEnabled => Sanitizer is not null && MarkerProtocol is not null;
+
+    // True when installer-only mode is combined with a non-empty
+    // IfeoTargetExeNames — the v0.5 "update-only IFEO" opt-in. CAMM
+    // still skips the locate-game / launch / log-tail / lifecycle-wait
+    // path, but DOES register an IFEO redirect on the target game's exe
+    // so the user gets update-on-game-launch behavior without a full
+    // launcher process orchestrating the run.
+    public bool UpdateOnlyIfeoEnabled =>
+        IsInstallerOnly && IfeoTargetExeNames is { Length: > 0 };
 }
