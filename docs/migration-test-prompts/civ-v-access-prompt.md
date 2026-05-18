@@ -30,7 +30,15 @@ Read in order:
    the launcher exe). `docs/getting-started.md` walks through the
    adoption steps; `docs/manifest-reference.md` documents every
    manifest field.
-2. CAMM's `CHANGELOG.md` (latest entry — v0.2.0).
+2. CAMM's `CHANGELOG.md` (latest entry — v0.3.0). v0.3.0 introduced
+   a few features specifically relevant to Civ V Access's shape: an
+   optional `OverwriteStrategy.BackupAndReplace` for payloads that
+   replace files the game ships with (engine DLLs, scripting host
+   DLLs), and a `LogTailEnabled` derived property that lets launcher-
+   mode adopters skip the log-tail bridge if they speak in-process
+   via their own Tolk binding rather than through CAMM's log-tail
+   loop. Read the v0.3.0 entry and judge whether either applies to
+   Civ V Access.
 3. The Civ VI Access `CivViAccess/` directory:
    - `Program.cs` (the thin shim: manifest construct + RunAsync call)
    - `CivViGameInstance.cs` (implements `Camm.IGameInstance`: paths to
@@ -57,7 +65,7 @@ Civ V Access. Produce a working CAMM-based Civ V Access launcher
 with these acceptance criteria:
 
 - Builds clean with `dotnet build` against CAMM as a submodule
-  (pinned to the latest CAMM release tag, e.g., `v0.1.1`).
+  pinned to `v0.3.0`.
 - `dotnet run -- --version` runs and reports sensible output
   (Civ V Access version, install state, channel, project URL).
 - `dotnet run -- --wizard-test` opens the install wizard with
@@ -148,3 +156,20 @@ When the report is written and you've confirmed the file exists, say
 so plainly in your final reply ("Report at
 C:\dev\camm-test-reports\<filename>.md, N words"). Do not paste the
 report into chat — the file is the deliverable.
+
+## Cleanup
+
+After the report is written and confirmed on disk, clean up the
+worktree you created so the maintainer's disk state stays tidy:
+
+```
+git worktree remove <your-worktree-path>          # from inside the source repo
+git branch -D <the-migration-branch-you-made>     # delete the local branch
+```
+
+The report at `C:\dev\camm-test-reports\` is the deliverable; the
+worktree is throwaway. Don't push your migration branch to any
+remote — it's a test artifact, not something to upstream.
+
+Confirm cleanup in your final reply with a one-line "Worktree
+removed: <path>" so the maintainer knows the cleanup happened.

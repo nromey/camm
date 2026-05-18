@@ -38,7 +38,14 @@ Read in order:
    The manifest-reference's "Mode-selection cheat sheet" shows which
    fields belong to installer-only mode (leave `GameInstance` /
    `IfeoTargetExeNames` / `GameProcessNames` / `Sanitizer` /
-   `MarkerProtocol` null).
+   `MarkerProtocol` null). Also note the v0.3.0 additions:
+   `PostInstallHook` (optional async hook receiving per-payload
+   install manifests, runs before "install complete" — useful for
+   game-side config edits CAMM doesn't model, e.g. RimWorld's
+   ModsConfig.xml), and mode-aware locale variants
+   (`<key>.InstallerOnly` keys override the base key when in
+   installer-only mode, addressing wizard copy that doesn't apply
+   without an IFEO redirect).
 3. Civ VI Access's source for reference shape (launcher mode). Your
    installer-only adopter will look similar in structure but
    thinner — only `Program.cs` + manifest, no `IGameInstance` or
@@ -80,8 +87,8 @@ Produce a working installer-only CAMM-based adopter with these
 acceptance criteria:
 
 - A new launcher project (e.g. `installer/` or `RimWorldAccessInstaller/`)
-  builds clean with `dotnet build` against CAMM as a submodule
-  (pin to the latest CAMM release tag, e.g. `v0.2.0`).
+  builds clean with `dotnet build` against CAMM as a submodule pinned
+  to `v0.3.0`.
 - `dotnet run -- --version` runs and reports sensible output
   (mod name, install state, channel, project URL).
 - `dotnet run -- --wizard-test` opens the install wizard with
@@ -156,3 +163,20 @@ When the report is written and you've confirmed the file exists,
 say so plainly in your final reply ("Report at
 C:\dev\camm-test-reports\<filename>.md, N words"). Do not paste the
 report into chat — the file is the deliverable.
+
+## Cleanup
+
+After the report is written and confirmed on disk, clean up the
+worktree you created so the maintainer's disk state stays tidy:
+
+```
+git worktree remove <your-worktree-path>          # from inside the source repo
+git branch -D <the-migration-branch-you-made>     # delete the local branch
+```
+
+The report at `C:\dev\camm-test-reports\` is the deliverable; the
+worktree is throwaway. Don't push your migration branch to any
+remote — it's a test artifact, not something to upstream.
+
+Confirm cleanup in your final reply with a one-line "Worktree
+removed: <path>" so the maintainer knows the cleanup happened.
