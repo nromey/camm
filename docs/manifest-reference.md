@@ -337,6 +337,133 @@ fails the install (wizard's Done page shows FailureBody). Idempotent
 behavior is your responsibility — install-over-install will call it
 again with the new payload manifests.
 
+### `Dependencies : IReadOnlyList<ModDependency>?` *(optional, v0.4.0)*
+
+External-mod dependencies your adopter requires — typically a
+bootstrap layer the mod runs inside (Harmony for RimWorld, BepInEx
+for Unity games, MelonLoader for Mono games, IPA for Beat Saber).
+
+```csharp
+Dependencies = new[]
+{
+    new ModDependency(
+        Name: "brrainz.harmony",
+        DisplayName: "Harmony",
+        GitHubReleasesOwner: "pardeike",
+        GitHubReleasesRepo: "HarmonyRimWorld",
+        AssetNamePattern: "Harmony-{0}.zip",
+        InstallPath: () => @"C:\...\Mods\Harmony",
+        SentinelFileName: "About/About.xml")
+    {
+        ZipRootStripPrefix = "*",
+    },
+},
+```
+
+At install time CAMM checks each dependency's sentinel
+(`InstallPath/SentinelFileName`). Missing → prompts the user
+(Install / Skip / Cancel), then fetches the latest release from
+GitHub Releases and extracts it. Idempotent — present-sentinel
+means CAMM skips the fetch entirely. See
+[`ModDependency` record fields](#moddependency-record-fields) for
+each field's semantics.
+
+Dependencies are install-time only — CAMM doesn't auto-update them
+after first install. They also survive adopter-mod uninstall
+(they're shared resources another mod may need). All network /
+extraction failures show a retry-or-skip-or-cancel dialog; the user
+always knows when a dependency couldn't be installed.
+
+### `PreInstallHook : Func<Task>?` *(optional, v0.4.0)*
+
+Symmetric partner to `PostInstallHook`. Runs after Tolk extraction
+and BEFORE dependency installation and payload extraction.
+
+```csharp
+PreInstallHook = async () =>
+{
+    // Migrate from a pre-CAMM deploy.ps1 install.
+    var staleBackup = Path.Combine(GameDir, "lua51_original.dll");
+    if (File.Exists(staleBackup))
+    {
+        File.Move(staleBackup,
+            Path.Combine(GameDir, "lua51_Win32.dll"),
+            overwrite: true);
+    }
+},
+```
+
+Use for arbitrary scripted setup CAMM doesn't model declaratively:
+migrating from a pre-CAMM deployed state, fetching a
+non-GitHub-Releases dependency (CAMM's `Dependencies` field only
+supports GitHub-Releases sources), transforming a config file
+before payloads land.
+
+Same contract as `PostInstallHook`: throw to fail the install,
+idempotency is your responsibility, `CammHost.Manifest` is
+statically available from inside the hook.
+
+## `ModDependency` record fields
+
+`record ModDependency(string Name, string DisplayName, string GitHubReleasesOwner, string GitHubReleasesRepo, string AssetNamePattern, Func<string> InstallPath, string SentinelFileName)`.
+Init-only `ZipRootStripPrefix : string?` for zip-extraction-prefix
+handling.
+
+### `Name : string`
+
+Stable identifier — persisted as the manifest filename at
+`%LocalAppData%\<adopter>\dep-<Name>.json` and used in log messages.
+Use the dependency's canonical ID: `"brrainz.harmony"`, `"BepInEx"`,
+etc.
+
+### `DisplayName : string`
+
+User-facing name shown in the install consent prompt, "Downloading
+..." status, and error messages.
+
+### `GitHubReleasesOwner / GitHubReleasesRepo : string`
+
+GitHub user-or-org and repository name to fetch from. CAMM calls
+`api.github.com/repos/<owner>/<repo>/releases/latest`.
+
+### `AssetNamePattern : string`
+
+Filename pattern of the asset to download. `{0}` substitutes the
+release's tag with any leading `v` stripped (same convention as
+CAMM's own `LauncherAssetNamePattern`). Examples:
+`"Harmony-{0}.zip"`, `"BepInEx_x64_{0}.zip"`, `"plugin.dll"` (for a
+single-file dep whose name doesn't change between versions).
+
+### `InstallPath : Func<string>`
+
+Directory the dependency extracts into. Called at runtime so the
+closure can do `Environment.GetFolderPath` resolution. Must return
+an absolute path.
+
+### `SentinelFileName : string`
+
+Relative path inside `InstallPath` that proves the dependency is
+already installed. Sub-paths like `"About/About.xml"` are honored.
+CAMM skips the fetch entirely if this file exists. Empty strings
+are not supported (the record throws at construction).
+
+### `ZipRootStripPrefix : string?` *(init-only, optional)*
+
+When the dependency's zip wraps content in a top-level directory
+(the common GitHub Release shape — `HarmonyRimWorld-2.3.3/...`),
+strip that prefix during extraction so the dependency lands
+directly under `InstallPath`.
+
+- Literal string (e.g. `"HarmonyRimWorld-2.3.3"`) → strip that
+  exact prefix.
+- `"*"` → strip whatever the first directory in the zip turns out
+  to be. Use this when the prefix changes per release.
+- `null` (default) → extract as-is, preserving any top-level zip
+  folders.
+
+Bare-DLL dependencies (`AssetNamePattern` ending in `.dll`) ignore
+this — there's no archive to strip.
+
 ## Derived properties
 
 ### `IsInstallerOnly : bool`
@@ -357,6 +484,13 @@ True when both `Sanitizer` and `MarkerProtocol` are non-null. CAMM
 starts the log-tail speech bridge only when this is true; otherwise
 launcher mode still spawns the game and waits for lifecycle, but
 without reading its log file for speech-bound lines.
+
+### `HasDependencies : bool` *(v0.4.0)*
+
+True when `Dependencies` is non-null and non-empty. Convenience for
+diagnostics and conditional log lines — `Installer.ApplyInstall`
+uses it to decide whether to log the "Checking N declared
+dependency(ies)..." line.
 
 ## ModPayload record fields
 
@@ -488,6 +622,8 @@ GameInstance                 required   |   required     | LEAVE NULL
 Sanitizer                    required   |  LEAVE NULL    | LEAVE NULL
 MarkerProtocol               required   |  LEAVE NULL    | LEAVE NULL
 PostInstallHook            optional     | optional       | optional
+PreInstallHook             optional     | optional       | optional
+Dependencies               optional     | optional       | optional
 ```
 
 `*` = all three or none; auto-update is enabled only when all three
