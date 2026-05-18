@@ -112,11 +112,14 @@ public static class Installer
         // prior install (read the per-payload manifest from a prior
         // run and clean up its files first so we don't leave orphans
         // when the payload's file set shrinks between versions).
+        var installedPayloads = new Dictionary<string, PayloadInstallManifest>(StringComparer.Ordinal);
         foreach (var payload in manifest.ModPayloads)
         {
             // Clean prior install of this payload (if any) before
-            // dropping new files. Avoids orphaned files when the
-            // payload's content shrinks between versions.
+            // dropping new files. RemoveByManifest also restores any
+            // BackupAndReplace .original files; subsequent ExtractTo
+            // will re-create them on top of the restored vanilla files,
+            // keeping the backup-tracking accurate across reinstalls.
             var prior = ModFiles.ReadManifestForPayload(payload);
             if (prior is not null)
             {
@@ -127,6 +130,7 @@ public static class Installer
             try
             {
                 var installed = ModFiles.ExtractTo(payload);
+                installedPayloads[payload.Name] = installed;
                 log($"Deployed payload '{payload.Name}': {installed.Files.Count} files to {installed.DestinationRoot}.");
             }
             catch (Exception ex)
@@ -161,6 +165,27 @@ public static class Installer
         {
             log($"Apps & Features registration failed: {ex.Message}. " +
                 "Uninstall via terminal will still work.");
+        }
+
+        // Post-install hook for adopters that need to do game-side
+        // config work after payload extraction (RimWorld's
+        // ModsConfig.xml edit, BepInEx plugin enable list, etc.).
+        // Hook runs after Apps & Features registration but before the
+        // "installed" announcement; throwing fails the install.
+        if (manifest.PostInstallHook is not null)
+        {
+            log("Running post-install hook...");
+            try
+            {
+                manifest.PostInstallHook(installedPayloads).GetAwaiter().GetResult();
+                log("Post-install hook completed.");
+            }
+            catch (Exception ex)
+            {
+                Logger.Exception("Post-install hook threw", ex);
+                log($"Post-install hook failed: {ex.Message}.");
+                throw;
+            }
         }
 
         speak($"{manifest.DisplayName} installed.");

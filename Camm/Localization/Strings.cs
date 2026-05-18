@@ -46,6 +46,31 @@ public static class Strings
     public static string Get(string key)
     {
         EnsureLoaded();
+
+        // Mode-aware variant lookup. When the manifest is in
+        // installer-only mode, prefer "<key>.InstallerOnly" over the
+        // base key so adopters get installer-appropriate copy (no
+        // mention of IFEO redirect, Steam launch interception, etc.).
+        // The variant is optional — if absent in the catalog we fall
+        // through to the base key, so adopters with shared copy across
+        // both modes don't need to duplicate every key.
+        bool installerOnly = false;
+        try { installerOnly = CammHost.Manifest.IsInstallerOnly; }
+        catch { /* not initialized — unit tests, etc. */ }
+
+        if (installerOnly)
+        {
+            var variantKey = key + ".InstallerOnly";
+            if (_loose is not null && _loose.TryGetValue(variantKey, out var looseVar))
+            {
+                return Substitute(looseVar);
+            }
+            if (_embedded is not null && _embedded.TryGetValue(variantKey, out var embVar))
+            {
+                return Substitute(embVar);
+            }
+        }
+
         if (_loose is not null && _loose.TryGetValue(key, out var loose))
         {
             return Substitute(loose);

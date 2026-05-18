@@ -11,13 +11,30 @@ via `CammHost.Manifest`.
 
 ## Modes
 
-The manifest's fields select one of two operating modes:
+The manifest's fields select one of three operating modes:
 
-- **Launcher mode**: `GameInstance` is non-null. CAMM installs +
-  registers IFEO + spawns the game + tails its log for speech +
-  waits for game exit.
-- **Installer-only mode**: `GameInstance` is null. CAMM installs +
-  registers in Apps & Features + auto-updates, then exits.
+- **Launcher mode with log-tail**: `GameInstance`, `Sanitizer`, and
+  `MarkerProtocol` all non-null. CAMM installs + registers IFEO +
+  spawns the game + tails its log for speech + waits for game exit.
+  Civ VI Access shape.
+- **Launcher mode without log-tail**: `GameInstance` non-null,
+  `Sanitizer` and `MarkerProtocol` null. CAMM installs + registers
+  IFEO + spawns the game + waits for game exit, but no log-tail
+  speech bridge. For mods whose runtime speaks in-process (Civ V
+  Access pattern: Lua proxy DLL injecting Tolk into the game's
+  scripting context). Saves you from writing two seam classes that
+  CAMM would never call.
+- **Installer-only mode**: `GameInstance` null. CAMM installs +
+  registers in Apps & Features + auto-updates, then exits. The
+  install + update path is the entire feature surface; no game
+  launch ever happens via CAMM. Harmony / BepInEx / MelonLoader
+  shape.
+
+Two derived properties:
+- `IsInstallerOnly` → true when `GameInstance is null`.
+- `LogTailEnabled` → true when both `Sanitizer` and `MarkerProtocol`
+  are set. False otherwise (installer-only mode OR launcher mode
+  without log-tail).
 
 The mode-selection guide and "which fields apply" matrix below
 explain which manifest fields belong to which mode.
@@ -247,7 +264,13 @@ GameProcessNames = new[] { "CivilizationVI", "CivilizationVI_DX12" }
 
 Per-mod in-engine markup sanitizer for log-tail speech. Strips
 markup (`[ICON_*]`, `[COLOR:*]`, `[NEWLINE]`, etc.) from each line
-before it reaches Tolk. Null = no log-tail speech bridge.
+before it reaches Tolk.
+
+Optional even in launcher mode. Setting Sanitizer AND MarkerProtocol
+enables the log-tail bridge; leaving both null skips it (e.g. for
+mods whose speech goes through an in-process Tolk binding, not a
+log file). Setting only one of the two is treated the same as
+setting neither — log-tail requires both.
 
 ```csharp
 Sanitizer = new CivViMessageSanitizer()
@@ -257,7 +280,7 @@ Sanitizer = new CivViMessageSanitizer()
 
 Per-mod log-line marker convention. Identifies which log lines are
 speech-bound (vs. ignored debug output) and parses any in-marker
-options. Null = no log-tail speech bridge.
+options. Same optionality rules as `Sanitizer` — both or neither.
 
 ```csharp
 MarkerProtocol = new CivViScreenReaderMarkerProtocol()
@@ -275,11 +298,44 @@ GameInstance = new CivViGameInstance()
 ```
 
 This is the single field that selects between launcher mode and
-installer-only mode. Setting `GameInstance` without also setting
-`IfeoTargetExeNames` / `GameProcessNames` / `Sanitizer` /
-`MarkerProtocol` produces an inconsistent manifest — CAMM will try
-to launch the game but won't intercept it via IFEO, won't relay
-speech, won't know what process to wait for. Don't do that.
+installer-only mode.
+
+`IGameInstance.GetLogFilePath()` is **only called when
+`LogTailEnabled` is true** — i.e. when Sanitizer + MarkerProtocol are
+both set. Launcher-mode adopters without a log-tail bridge can
+return any string from GetLogFilePath; CAMM won't open the file.
+
+Setting `GameInstance` without also setting `IfeoTargetExeNames` /
+`GameProcessNames` produces an inconsistent manifest — CAMM will try
+to launch the game but won't intercept it via IFEO, won't know what
+process to wait for. Don't do that.
+
+### `PostInstallHook : Func<IReadOnlyDictionary<string, PayloadInstallManifest>, Task>?` *(optional)*
+
+Async hook invoked after all payloads have been extracted and IFEO
++ Apps & Features have been registered, but BEFORE the "install
+complete" announcement to the user. Receives a dictionary keyed by
+`ModPayload.Name` with the install manifests CAMM just wrote (each
+manifest lists the files written and any backed-up `.original`
+files).
+
+```csharp
+PostInstallHook = async installed =>
+{
+    var modsConfig = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        "AppData", "LocalLow", "Ludeon Studios",
+        "RimWorld by Ludeon Studios", "Config", "ModsConfig.xml");
+    await ModsConfigEditor.EnsureModEnabled(modsConfig, "shane12300.rimworldaccess");
+}
+```
+
+Use for game-side config CAMM doesn't model: RimWorld's
+`ModsConfig.xml`, BepInEx's plugin enable list, ModInfo
+registration for engines that require it. Throwing from the hook
+fails the install (wizard's Done page shows FailureBody). Idempotent
+behavior is your responsibility — install-over-install will call it
+again with the new payload manifests.
 
 ## Derived properties
 
@@ -294,6 +350,13 @@ install + update or continue into the game-launch flow.
 True when all of `GitHubReleasesOwner`, `GitHubReleasesRepo`, and
 `LauncherAssetNamePattern` are non-empty. CAMM skips the update
 check on startup when this is false.
+
+### `LogTailEnabled : bool`
+
+True when both `Sanitizer` and `MarkerProtocol` are non-null. CAMM
+starts the log-tail speech bridge only when this is true; otherwise
+launcher mode still spawns the game and waits for lifecycle, but
+without reading its log file for speech-bound lines.
 
 ## ModPayload record fields
 
@@ -403,34 +466,67 @@ one file; CAMM extracts it into the parent.
 ## Mode-selection cheat sheet
 
 ```
-                            launcher mode | installer-only
-                            ------------- | --------------
-LocalAppDataFolderName          required  |    required
-LauncherExeName                 required  |    required
-UserAgent                       required  |    required
-AppsAndFeaturesKeyName          required  |    required
-DisplayName                     required  |    required
-Publisher                       required  |    required
-ModPayloads                     required  |    required
-TargetGameDisplayName           required  |    required
-TargetGameLauncherName        default OK  |  default OK
-ProjectUrl                    optional    |  optional
-GitHubReleasesOwner           optional*   |  optional*
-GitHubReleasesRepo            optional*   |  optional*
-LauncherAssetNamePattern      optional*   |  optional*
-IfeoTargetExeNames              required  |     LEAVE NULL
-GameProcessNames                required  |     LEAVE NULL
-Sanitizer                       required  |     LEAVE NULL
-MarkerProtocol                  required  |     LEAVE NULL
-GameInstance                    required  |     LEAVE NULL
+                            launcher    | launcher       | installer-
+                            +log-tail   | (no log-tail)  | only
+                            ----------- | -------------- | ----------
+LocalAppDataFolderName       required   |   required     | required
+LauncherExeName              required   |   required     | required
+UserAgent                    required   |   required     | required
+AppsAndFeaturesKeyName       required   |   required     | required
+DisplayName                  required   |   required     | required
+Publisher                    required   |   required     | required
+ModPayloads                  required   |   required     | required
+TargetGameDisplayName        required   |   required     | required
+TargetGameLauncherName     default OK   | default OK     | default OK
+ProjectUrl                 optional     | optional       | optional
+GitHubReleasesOwner        optional*    | optional*      | optional*
+GitHubReleasesRepo         optional*    | optional*      | optional*
+LauncherAssetNamePattern   optional*    | optional*      | optional*
+IfeoTargetExeNames           required   |   required     | LEAVE NULL
+GameProcessNames             required   |   required     | LEAVE NULL
+GameInstance                 required   |   required     | LEAVE NULL
+Sanitizer                    required   |  LEAVE NULL    | LEAVE NULL
+MarkerProtocol               required   |  LEAVE NULL    | LEAVE NULL
+PostInstallHook            optional     | optional       | optional
 ```
 
 `*` = all three or none; auto-update is enabled only when all three
 are set.
 
-"required" in launcher mode = your launcher won't work right
-without it. The compiler accepts null for the launcher-mode fields
-because `IsInstallerOnly` adopters need to leave them null, but
-setting `GameInstance` without the others is an inconsistent
+"required" = your launcher won't work right without it. The
+compiler accepts null for the launcher-mode fields because
+installer-only adopters and log-tail-skipping launcher-mode adopters
+need to leave them null. Setting `GameInstance` without
+`IfeoTargetExeNames` / `GameProcessNames` is an inconsistent
 configuration CAMM doesn't validate but will fail with a poor
 runtime error.
+
+### Per-payload `OverwriteStrategy` (new in v0.3.0)
+
+Each `ModPayload` has an `OverwriteStrategy` init-only property
+defaulting to `Replace`. Set `BackupAndReplace` for payloads that
+overwrite files the game ships (engine DLLs, scripting host DLLs):
+
+```csharp
+new ModPayload(
+    Name: "engine",
+    FolderName: "engine",
+    SentinelFileName: "CvGameCore_Expansion2.dll",
+    DefaultDestination: () => @"...\Assets\DLC\Expansion2")
+{
+    OverwriteStrategy = OverwriteStrategy.BackupAndReplace,
+}
+```
+
+`BackupAndReplace` renames each existing target to `<filename>.original`
+before writing the new content. On uninstall, CAMM deletes the
+CAMM-installed file and restores the `.original` rename, returning
+the game install to its pre-CAMM state. Without this, uninstall via
+the standard per-file install manifest would simply delete the engine
+DLL and leave the user with a broken game.
+
+The pre-CAMM state is captured at the FIRST `BackupAndReplace`
+install (when `.original` doesn't yet exist). Subsequent installs
+that find a pre-existing `.original` preserve it — they don't
+overwrite the user's actual vanilla file with a CAMM-modified copy
+from a prior install.

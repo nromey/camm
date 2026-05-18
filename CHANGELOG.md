@@ -11,6 +11,126 @@ can consume CAMM without reading the civ-vi-access source. Pre-1.0
 means any release can break API; consumers pin to a tag SHA and
 upgrade when ready.
 
+## 0.3.0 — 2026-05-17 — Adaptive launcher mode + post-install hook + backup/restore
+
+API-additive minor bump driven by the same v0.2.0 test reports. The
+through-line: every adopter has different needs for which CAMM
+features they want; the framework should let them turn off the
+pieces they don't need without losing the always-want pieces
+(installer wizard, Apps & Features, auto-update). v0.3.0 makes
+launcher mode adaptive (three modes instead of two), gives adopters
+a way to run their own logic after install, and lets payloads that
+overwrite vanilla files unwind themselves on uninstall.
+
+### Three operating modes (`LogTailEnabled` derived property)
+
+Launcher mode now subdivides into "with log-tail" and "without
+log-tail" based on whether `Sanitizer` AND `MarkerProtocol` are
+set. Civ VI Access (full log-tail) is unchanged. Civ V Access
+(speech via in-process Lua proxy, no log file involvement) can now
+adopt CAMM in launcher mode without writing two no-op seam classes
+CAMM would never call.
+
+CAMM detects "launcher mode without log-tail" at startup and skips
+the log-file-watch loop while still doing IFEO redirect, game spawn,
+foreground-handoff, lifecycle-wait, and closed announcement. The
+`IGameInstance.GetLogFilePath()` method is only called when
+`LogTailEnabled` is true; adopters without log-tail can return any
+string from it.
+
+The "Mode-selection cheat sheet" in `docs/manifest-reference.md`
+gains a third column.
+
+### `PostInstallHook` on the manifest
+
+Optional `Func<IReadOnlyDictionary<string, PayloadInstallManifest>, Task>?`
+field. Runs after all payloads have been extracted and Apps & Features
+is registered, before the wizard's "install complete" announcement.
+Receives the per-payload install manifests CAMM just wrote (file
+lists, backup entries).
+
+Use case: game-side config edits CAMM doesn't model. RimWorld's
+`ModsConfig.xml` needs `<li>foo.bar</li>` added to enable a mod;
+BepInEx has its own plugin enable list per game. Hook throws →
+install fails (wizard shows FailureBody). Idempotent behavior is the
+adopter's responsibility — install-over-install will call it again.
+
+### `OverwriteStrategy` on `ModPayload`
+
+New enum + init-only property:
+
+```csharp
+new ModPayload(...) { OverwriteStrategy = OverwriteStrategy.BackupAndReplace }
+```
+
+`Replace` (default, behavior unchanged) overwrites existing files in
+the destination, deletes only the CAMM-installed files on uninstall.
+
+`BackupAndReplace` is for payloads that overwrite files the game
+shipped — Civ V Access's forked `CvGameCore_Expansion2.dll` engine
+DLL, its `lua51_Win32.dll` Lua proxy. At extract time, CAMM renames
+each existing target to `<filename>.original` before writing the new
+content. At uninstall time, CAMM deletes the CAMM-installed file
+and restores the `.original` rename, returning the game install to
+its pre-CAMM state. The `.original` files are tracked in the payload's
+install manifest under a new `backups` array.
+
+The pre-CAMM state is captured at the FIRST `BackupAndReplace`
+install (when `.original` doesn't yet exist). Subsequent installs
+that find a pre-existing `.original` preserve it — they don't
+overwrite the user's actual vanilla file with a CAMM-modified copy
+from a prior install.
+
+Without this, Civ V Access uninstall via CAMM would leave the user
+with a missing engine DLL and a broken Lua scripting host — game
+fails to launch. With this, CAMM-built mods can replace vanilla
+files safely.
+
+### Mode-aware locale variants
+
+`Strings.Get(key)` now auto-prefers `<key>.InstallerOnly` over
+`<key>` when `manifest.IsInstallerOnly` is true. The variant is
+optional per-key — keys whose copy works in both modes don't need
+duplicates.
+
+Catalog additions (with `.InstallerOnly` variants where copy
+differed):
+
+- `Console.Title` / `Console.Title.InstallerOnly` —
+  "Installer" vs "Launcher" in the console window title.
+- `Console.Initializing` / `Console.Initializing.InstallerOnly` —
+  startup line printed past the args dispatch.
+- `About.ProductLabel` / `About.ProductLabel.InstallerOnly` —
+  product label in `--version` output ("Civ VI Access Launcher 0.3.0"
+  vs "RimWorld Access Installer 0.1.0").
+- `Wizard.Welcome.Body.InstallerOnly` — installer-only wording
+  ("copy the updater to Program Files" + payload-into-mod-folder)
+  instead of launcher-mode wording ("copy the launcher to Program
+  Files").
+- `Installer.Uninstall.ConfirmContent.InstallerOnly` — drops the
+  bullet about removing the IFEO launch redirect (false in
+  installer-only mode).
+- `Installer.Uninstall.CompleteBody.InstallerOnly` — drops the
+  "Steam will launch directly again" wording (also false; the game
+  always launched directly).
+
+Fixes the test report's gap #4.2 ("uninstall wizard's body text
+references IFEO / launch-redirect cleanup that didn't happen") for
+installer-only adopters.
+
+### Behind the scenes
+
+- `PayloadInstallManifest` gains a `Backups` list (per-file
+  rename-back instructions). Old v0.2.x manifest files deserialize
+  cleanly into the new shape (empty Backups list).
+- `Installer.ApplyInstall` collects each payload's install manifest
+  into a dictionary and passes it to `PostInstallHook` if set.
+- `CammHost.RunAsync` skips the log-file-watch tail when
+  `LogTailEnabled` is false but still does IFEO + spawn + lifecycle.
+- `Strings.Get` is mode-aware via `CammHost.Manifest.IsInstallerOnly`;
+  reads from a try/catch so unit tests calling Strings without
+  initializing the manifest still work.
+
 ## 0.2.1 — 2026-05-17 — Doc patches from v0.2.0 dual-track AI-readability tests
 
 No API changes. Documentation + template patches addressing

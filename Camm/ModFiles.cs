@@ -45,6 +45,7 @@ public static class ModFiles
                 $"payload as resources with logical name '{payload.Name}/<path>'.");
 
         var written = new List<string>();
+        var backups = new List<BackupEntry>();
         var prefix = payload.Name + "/";
         var altPrefix = payload.Name + "\\";
 
@@ -61,6 +62,49 @@ public static class ModFiles
 
             var destFolder = Path.GetDirectoryName(destPath);
             if (destFolder is not null) Directory.CreateDirectory(destFolder);
+
+            // BackupAndReplace: if a non-CAMM file already exists at
+            // destPath, rename it to <destPath>.original so uninstall
+            // can restore the user's pre-CAMM state. Skip if the
+            // backup already exists (don't clobber a real backup with
+            // a CAMM-installed file from a previous install).
+            if (payload.OverwriteStrategy == OverwriteStrategy.BackupAndReplace
+                && File.Exists(destPath))
+            {
+                var backupPath = destPath + ".original";
+                if (!File.Exists(backupPath))
+                {
+                    try
+                    {
+                        File.Move(destPath, backupPath);
+                        backups.Add(new BackupEntry
+                        {
+                            InstalledPath = Path.GetFullPath(destPath),
+                            BackupPath = Path.GetFullPath(backupPath),
+                        });
+                    }
+                    catch (IOException ex)
+                    {
+                        Logger.Warn(
+                            $"Could not back up existing file {destPath}: {ex.Message}. " +
+                            $"Will overwrite; uninstall will leave this file deleted.");
+                    }
+                }
+                else
+                {
+                    // Backup from a prior CAMM install already exists.
+                    // The current destPath is the CAMM-installed file
+                    // from that prior install — just delete it so the
+                    // new content can land, and preserve the existing
+                    // backup-entry record for uninstall.
+                    backups.Add(new BackupEntry
+                    {
+                        InstalledPath = Path.GetFullPath(destPath),
+                        BackupPath = Path.GetFullPath(backupPath),
+                    });
+                    try { File.Delete(destPath); } catch { /* best effort */ }
+                }
+            }
 
             using var stream = asm.GetManifestResourceStream(resourceName);
             if (stream is null) continue;
@@ -82,6 +126,7 @@ public static class ModFiles
             PayloadName = payload.Name,
             DestinationRoot = Path.GetFullPath(targetDir),
             Files = written.Select(Path.GetFullPath).ToList(),
+            Backups = backups,
             CreatedAt = DateTime.UtcNow.ToString("O"),
             CammVersion = SemVer.Current().ToString(),
         };
@@ -116,12 +161,40 @@ public static class ModFiles
     // empty subdirectories from the deepest leaf up to (but not
     // including) the destination root and removes them, leaving
     // foreign files in the destination intact.
+    //
+    // Then, for each backup entry, restore the .original file to its
+    // pre-CAMM location (BackupAndReplace strategy). This must happen
+    // AFTER the file delete so the rename can land on an empty slot.
     public static void RemoveByManifest(PayloadInstallManifest manifest)
     {
         foreach (var file in manifest.Files)
         {
             try { File.Delete(file); } catch { /* best effort */ }
         }
+
+        foreach (var backup in manifest.Backups)
+        {
+            try
+            {
+                if (File.Exists(backup.BackupPath))
+                {
+                    if (File.Exists(backup.InstalledPath))
+                    {
+                        // CAMM-owned file wasn't deleted (Files list and
+                        // Backups list disagree — shouldn't normally
+                        // happen, but be safe).
+                        File.Delete(backup.InstalledPath);
+                    }
+                    File.Move(backup.BackupPath, backup.InstalledPath);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn(
+                    $"Could not restore backup {backup.BackupPath} -> {backup.InstalledPath}: {ex.Message}.");
+            }
+        }
+
         TryRemoveEmptyDirsBelow(manifest.DestinationRoot, manifest.Files);
     }
 

@@ -63,7 +63,7 @@ public static class CammHost
                 "CammModManifest.ModPayloads must contain at least one ModPayload.");
         }
 
-        try { Console.Title = $"{manifest.DisplayName} Launcher"; }
+        try { Console.Title = Strings.Get("Console.Title"); }
         catch { /* console may be redirected */ }
 
         // Step 1: pending self-update.
@@ -186,7 +186,7 @@ public static class CammHost
         }
 
         Logger.Info("Past install/uninstall/version routing");
-        Console.WriteLine($"{manifest.DisplayName} Launcher initializing...");
+        Console.WriteLine(Strings.Get("Console.Initializing"));
 
         // ---- Update check ----
         var settings = LauncherSettings.LoadOrCreate(LauncherSettings.DefaultPath);
@@ -279,10 +279,20 @@ public static class CammHost
             return 1;
         }
 
-        var logFilePath = gameInstance.GetLogFilePath();
-        long preLaunchLogSize = File.Exists(logFilePath)
-            ? new FileInfo(logFilePath).Length
-            : 0L;
+        // Log-tail bridge: only configured when both seam interfaces
+        // are set. Adopters whose mod speaks in-process via their own
+        // Tolk binding (Civ V Access pattern) leave Sanitizer +
+        // MarkerProtocol null and CAMM skips the log-tail loop while
+        // still doing the rest of launcher mode (spawn + lifecycle).
+        string? logFilePath = null;
+        long preLaunchLogSize = 0L;
+        if (manifest.LogTailEnabled)
+        {
+            logFilePath = gameInstance.GetLogFilePath();
+            preLaunchLogSize = File.Exists(logFilePath)
+                ? new FileInfo(logFilePath).Length
+                : 0L;
+        }
 
         var launchAnnouncement = gameInstance.GetLaunchAnnouncement();
         Console.WriteLine($"Launching {gameExePath}...");
@@ -317,43 +327,51 @@ public static class CammHost
             accessibleOutput.Speak(Strings.Get("Speech.ForegroundFailed"));
         }
 
-        Logger.Info($"Waiting for {manifest.TargetGameDisplayName} log file to appear");
-        Console.WriteLine($"Waiting for {manifest.TargetGameDisplayName} log file...");
-
-        var logFileWatcher = new LogTailSpeaker(mediator);
-        var startupTimeout = TimeSpan.FromMinutes(2);
-        var startupStart = DateTime.UtcNow;
-        bool seenAlive = false;
-
-        while (!File.Exists(logFilePath))
+        if (manifest.LogTailEnabled && logFilePath is not null)
         {
-            if (AnyGameProcessRunning())
+            Logger.Info($"Waiting for {manifest.TargetGameDisplayName} log file to appear");
+            Console.WriteLine($"Waiting for {manifest.TargetGameDisplayName} log file...");
+
+            var logFileWatcher = new LogTailSpeaker(mediator);
+            var startupTimeout = TimeSpan.FromMinutes(2);
+            var startupStart = DateTime.UtcNow;
+            bool seenAlive = false;
+
+            while (!File.Exists(logFilePath))
             {
-                seenAlive = true;
-            }
-            else if (seenAlive)
-            {
-                Console.WriteLine($"{manifest.TargetGameDisplayName} exited before creating a log file. Launcher exiting.");
-                return 0;
-            }
-            else if (DateTime.UtcNow - startupStart > startupTimeout)
-            {
-                var msg = Strings.Get("Speech.GameStartupTimeout");
-                Console.Error.WriteLine(msg);
-                accessibleOutput.Speak(msg);
-                return 2;
+                if (AnyGameProcessRunning())
+                {
+                    seenAlive = true;
+                }
+                else if (seenAlive)
+                {
+                    Console.WriteLine($"{manifest.TargetGameDisplayName} exited before creating a log file. Launcher exiting.");
+                    return 0;
+                }
+                else if (DateTime.UtcNow - startupStart > startupTimeout)
+                {
+                    var msg = Strings.Get("Speech.GameStartupTimeout");
+                    Console.Error.WriteLine(msg);
+                    accessibleOutput.Speak(msg);
+                    return 2;
+                }
+
+                Thread.Sleep(2000);
             }
 
-            Thread.Sleep(2000);
+            Logger.Info($"Log file appeared at {logFilePath}, starting WatchLogFile from offset {preLaunchLogSize}");
+            Console.WriteLine("Log file found. Watching...");
+            _ = Task.Run(() =>
+            {
+                try { logFileWatcher.WatchLogFile(logFilePath, preLaunchLogSize); }
+                catch (Exception ex) { Logger.Exception("WatchLogFile threw", ex); }
+            });
         }
-
-        Logger.Info($"Log file appeared at {logFilePath}, starting WatchLogFile from offset {preLaunchLogSize}");
-        Console.WriteLine("Log file found. Watching...");
-        _ = Task.Run(() =>
+        else
         {
-            try { logFileWatcher.WatchLogFile(logFilePath, preLaunchLogSize); }
-            catch (Exception ex) { Logger.Exception("WatchLogFile threw", ex); }
-        });
+            Logger.Info("Log-tail bridge disabled (Sanitizer/MarkerProtocol null); skipping log file watch.");
+            Console.WriteLine($"Waiting for {manifest.TargetGameDisplayName} to exit...");
+        }
 
         while (AnyGameProcessRunning())
         {
@@ -418,7 +436,12 @@ public static class CammHost
             catch { /* HKLM read failed; leave default */ }
         }
 
-        Console.WriteLine($"{manifest.DisplayName} Launcher {version}");
+        // Use a mode-aware product label ("__DISPLAY_NAME__ Launcher"
+        // for launcher mode, "__DISPLAY_NAME__ Installer" for
+        // installer-only). Strings.Get auto-picks the InstallerOnly
+        // variant when IsInstallerOnly is true.
+        var productLabel = Strings.Get("About.ProductLabel");
+        Console.WriteLine($"{productLabel} {version}");
         Console.WriteLine($"  Running from: {exe}");
         Console.WriteLine($"  Install state: {installState}");
         Console.WriteLine($"  Update channel: {channel}");
@@ -427,7 +450,7 @@ public static class CammHost
             Console.WriteLine($"  Project: {manifest.ProjectUrl}");
         }
 
-        speak($"{manifest.DisplayName} Launcher version {version}. {installState}. Update channel: {channel}.");
+        speak($"{productLabel} version {version}. {installState}. Update channel: {channel}.");
     }
 
     private static int DoConfig(Action<string> log)

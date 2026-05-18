@@ -1,10 +1,18 @@
 {
-  "_comment": "CAMM locale catalog — English baseline. Tokens like __DISPLAY_NAME__ are replaced from CammHost.Manifest at lookup time; see Strings.cs for the full substitution table. Translators: copy this file to lang/<culture>.json next to the consuming launcher exe and translate values. Do NOT translate the keys or the substitution tokens.",
+  "_comment": "CAMM locale catalog — English baseline. Tokens like __DISPLAY_NAME__ are replaced from CammHost.Manifest at lookup time; see Strings.cs for the full substitution table. Translators: copy this file to lang/<culture>.json next to the consuming launcher exe and translate values. Do NOT translate the keys or the substitution tokens. Keys ending in '.InstallerOnly' are auto-selected when CammHost.Manifest.IsInstallerOnly is true; only add the variant where the base key's copy is wrong for installer-only mode.",
+
+  "Console.Title": "__DISPLAY_NAME__ Launcher",
+  "Console.Title.InstallerOnly": "__DISPLAY_NAME__ Installer",
+  "Console.Initializing": "__DISPLAY_NAME__ Launcher initializing...",
+  "Console.Initializing.InstallerOnly": "__DISPLAY_NAME__ Installer initializing...",
+  "About.ProductLabel": "__DISPLAY_NAME__ Launcher",
+  "About.ProductLabel.InstallerOnly": "__DISPLAY_NAME__ Installer",
 
   "Wizard.Welcome.Title": "Welcome",
   "Wizard.Welcome.Heading": "Install __DISPLAY_NAME__",
   "Wizard.Welcome.Subhead": "by __PUBLISHER__, version __VERSION__",
   "Wizard.Welcome.Body": "This installer will copy the launcher to Program Files and register __DISPLAY_NAME__ with Windows.\r\n\r\nWindows will prompt for administrator permission later in this installer.",
+  "Wizard.Welcome.Body.InstallerOnly": "This installer will copy the updater to Program Files, deploy __DISPLAY_NAME__'s files to __TARGET_GAME__'s mod folder, and register __DISPLAY_NAME__ with Windows so updates can be applied automatically.\r\n\r\nWindows will prompt for administrator permission later in this installer.",
 
   "Wizard.Channel.Title": "Update channel",
   "Wizard.Channel.Heading": "Update channel",
@@ -66,12 +74,14 @@
   "Installer.Uninstall.ConfirmTitle": "__DISPLAY_NAME__ — Uninstall",
   "Installer.Uninstall.ConfirmInstruction": "Uninstall __DISPLAY_NAME__ from this computer?",
   "Installer.Uninstall.ConfirmContent": "This will:\n  • Remove the __TARGET_LAUNCHER__-launch redirect (__TARGET_GAME__ will launch directly again)\n  • Remove the __DISPLAY_NAME__ mod from __TARGET_GAME__'s mod folder\n  • Remove the Apps & Features registration\n  • Leave installed files at __INSTALL_DIR__ in place\n    (delete that folder manually if you want a complete cleanup)\n\nClicking Uninstall will prompt for administrator permission (Windows UAC).",
+  "Installer.Uninstall.ConfirmContent.InstallerOnly": "This will:\n  • Remove the __DISPLAY_NAME__ mod files from __TARGET_GAME__'s mod folder\n  • Remove the Apps & Features registration\n  • Leave installed files at __INSTALL_DIR__ in place\n    (delete that folder manually if you want a complete cleanup)\n\nClicking Uninstall will prompt for administrator permission (Windows UAC).",
   "Installer.Uninstall.ConfirmButton.Heading": "Uninstall __DISPLAY_NAME__",
   "Installer.Uninstall.ConfirmButton.Note": "Remove the redirect, mod files, and Apps & Features entry.",
   "Installer.Uninstall.CancelButton.Heading": "Cancel",
   "Installer.Uninstall.CancelButton.Note": "Exit without making any changes.",
   "Installer.Uninstall.CompleteTitle": "__DISPLAY_NAME__ — Uninstall Complete",
   "Installer.Uninstall.CompleteBody": "__DISPLAY_NAME__ has been uninstalled.\n\n__TARGET_GAME__ will now launch directly from __TARGET_LAUNCHER__ again — the access mod will not activate.\n\nCleaned up:\n  • __TARGET_LAUNCHER__ launch redirect (IFEO)\n  • Apps & Features registration\n  • Mod files in __TARGET_GAME__'s mod folder",
+  "Installer.Uninstall.CompleteBody.InstallerOnly": "__DISPLAY_NAME__ has been uninstalled.\n\nThe accessibility mod will no longer activate inside __TARGET_GAME__.\n\nCleaned up:\n  • Apps & Features registration\n  • Mod files in __TARGET_GAME__'s mod folder",
 
   "AlreadyInstalled.Title": "__DISPLAY_NAME__ — Already Installed",
   "AlreadyInstalled.Instruction": "__DISPLAY_NAME__ is already installed. What would you like to do?",

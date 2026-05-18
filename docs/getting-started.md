@@ -237,17 +237,60 @@ For a **launcher-mode** adopter you also fill in:
     // Launcher mode: target-game lifecycle
     IfeoTargetExeNames = new[] { "YourGame.exe" },
     GameProcessNames = new[] { "YourGame" },
-
-    // Launcher mode: speech bridge
-    Sanitizer = new YourGameMessageSanitizer(),
-    MarkerProtocol = new YourGameScreenReaderMarkerProtocol(),
     GameInstance = new YourGameInstance(),
 ```
 
-If you don't fill those in, CAMM detects "installer-only mode"
-(`GameInstance is null`) and skips IFEO redirect, log-tail speech,
-and game-launch lifecycle entirely. Adopter ships a launcher exe
-that's just install + update + uninstall.
+If your mod uses CAMM's log-tail speech bridge (Civ VI Access shape:
+the game emits `#SCREENREADER`-prefixed log lines that CAMM forwards
+to Tolk), also set:
+
+```csharp
+    Sanitizer = new YourGameMessageSanitizer(),
+    MarkerProtocol = new YourGameScreenReaderMarkerProtocol(),
+```
+
+If your mod speaks in-process via its own Tolk binding (Civ V Access
+shape: a Lua proxy DLL exposes Tolk as a global inside the game's
+Lua context, no log channel involved), leave `Sanitizer` and
+`MarkerProtocol` null. CAMM still does everything else launcher
+mode does — IFEO redirect, game spawn, lifecycle wait — just without
+the log-tail loop. (`manifest.LogTailEnabled` returns true only
+when both are set.)
+
+If you don't fill in `GameInstance` at all, CAMM detects
+"installer-only mode" and skips IFEO redirect, log-tail speech, AND
+game-launch lifecycle entirely. Adopter ships a launcher exe that's
+just install + update + uninstall.
+
+### Optional fields
+
+```csharp
+    // For mods that overwrite vanilla game files (engine DLL,
+    // scripting-host DLL). CAMM renames the existing file to
+    // <name>.original before extracting, restores on uninstall.
+    // Set on individual ModPayload entries via the with-init syntax:
+    ModPayloads = new[]
+    {
+        new ModPayload(
+            Name: "engine",
+            FolderName: "engine",
+            SentinelFileName: "Engine.dll",
+            DefaultDestination: () => @"C:\Game\Engine")
+        {
+            OverwriteStrategy = OverwriteStrategy.BackupAndReplace,
+        },
+    },
+
+    // Optional post-install hook. Runs after all payloads are
+    // extracted and Apps & Features is registered, before the
+    // wizard's "install complete" page. Use for game-side config
+    // CAMM doesn't model (RimWorld ModsConfig.xml, BepInEx plugin
+    // enable list, ModInfo registration). Throw to fail the install.
+    PostInstallHook = async installed =>
+    {
+        await MyGameSpecificConfigEditor.EnableMod(...);
+    },
+```
 
 ## Step 5 (launcher mode only): implement the seam interfaces
 

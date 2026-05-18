@@ -5,23 +5,33 @@ namespace Camm;
 // CammHost.Initialize for direct-use scenarios). Every CAMM module
 // reads from it via CammHost.Manifest at call time.
 //
-// CAMM has two operating modes that the manifest's optional fields
+// CAMM has three operating modes that the manifest's optional fields
 // select:
 //
-//   * **Launcher mode** — full chameleon launcher: install wizard +
-//     auto-update + IFEO transparent-launch + Tolk speech routing of
-//     in-game log-tail messages + lifecycle wait. The consumer fills
-//     in all the launcher fields (GameInstance, IfeoTargetExeNames,
-//     GameProcessNames, Sanitizer, MarkerProtocol).
+//   * **Launcher mode with log-tail** — full chameleon launcher:
+//     install wizard + auto-update + IFEO transparent-launch + Tolk
+//     speech routing of in-game log-tail messages + lifecycle wait.
+//     The consumer fills in every launcher field (GameInstance,
+//     IfeoTargetExeNames, GameProcessNames, Sanitizer, MarkerProtocol).
+//     Civ VI Access uses this.
+//
+//   * **Launcher mode without log-tail** — install + update + IFEO
+//     redirect + game spawn + lifecycle wait, but no log-tail speech
+//     bridge. For mods that handle speech in-process (Civ V Access
+//     pattern: a Lua proxy DLL exposes Tolk as a global inside the
+//     game's scripting context, so there's no log channel to tail).
+//     Set GameInstance + IfeoTargetExeNames + GameProcessNames; leave
+//     Sanitizer and MarkerProtocol null.
 //
 //   * **Installer-only mode** — install wizard + auto-update only.
 //     Used by mods whose runtime lives inside the game's process
 //     (Harmony DLL, BepInEx plugin, Wwise mod, etc.) where there's
-//     no launcher exe to redirect through. Leave the launcher-mode
-//     fields null; CAMM detects installer-only at startup and skips
+//     no launcher exe to redirect through. Leave every launcher-mode
+//     field null; CAMM detects installer-only at startup and skips
 //     the locate-game / launch / log-tail / lifecycle path.
 //
-// IsInstallerOnly returns true when GameInstance is null.
+// IsInstallerOnly is true when GameInstance is null. LogTailEnabled
+// is true when both Sanitizer AND MarkerProtocol are set.
 public sealed class CammModManifest
 {
     // ---------------------------------------------------------------
@@ -111,22 +121,54 @@ public sealed class CammModManifest
     // lifecycle handling.
     public string[]? GameProcessNames { get; init; }
 
-    // Per-mod in-engine markup sanitizer for log-tail speech.
-    // Null = no log-tail speech bridge (Harmony mods etc. speak
-    // in-process via their own bindings, bypassing the log).
+    // Per-mod in-engine markup sanitizer for log-tail speech. Optional
+    // even in launcher mode — Civ V Access, for example, has a
+    // GameInstance (launcher mode) but emits no log-bridged speech
+    // because its mod speaks in-process via a Lua proxy DLL. Setting
+    // Sanitizer + MarkerProtocol to non-null enables the log-tail
+    // bridge; leaving them null skips it within launcher mode.
     public Speech.IMessageSanitizer? Sanitizer { get; init; }
 
-    // Per-mod log-line marker convention. Null = no log-tail speech.
+    // Per-mod log-line marker convention. Optional, same logic as
+    // Sanitizer above. Both must be set for the log-tail speech
+    // bridge to fire.
     public Speech.IScreenReaderMarkerProtocol? MarkerProtocol { get; init; }
 
     // Per-game hooks for the main launch flow (locate game, log file,
     // launch + closed announcements). Null = installer-only mode:
     // CammHost.RunAsync skips the entire game-launch / log-tail /
     // lifecycle-wait tail after handling args + install + update.
+    //
+    // GetLogFilePath() is ONLY called when LogTailEnabled returns
+    // true (Sanitizer + MarkerProtocol both set). Adopters that don't
+    // use the log-tail bridge can return any value from
+    // GetLogFilePath; CAMM won't read it.
     public IGameInstance? GameInstance { get; init; }
+
+    // Optional async hook invoked after all payloads have been
+    // extracted and IFEO + Apps & Features have been registered, but
+    // before "install complete" is announced to the user. Receives a
+    // dictionary keyed by payload name with the install manifests
+    // CAMM just wrote. Use for game-side config edits CAMM doesn't
+    // model: RimWorld's ModsConfig.xml, BepInEx's plugin enable
+    // list, ModInfo registration for engines that need it.
+    //
+    // Throwing from the hook fails the install (the wizard's Done
+    // page shows the FailureBody). Idempotent / safe to re-run is the
+    // adopter's responsibility — install-over-install will call it
+    // again.
+    public Func<IReadOnlyDictionary<string, PayloadInstallManifest>, Task>? PostInstallHook { get; init; }
 
     // True when the manifest doesn't drive a game-launch flow. CAMM's
     // RunAsync exits cleanly after install/update/uninstall flow
     // completes rather than locating + launching the target game.
     public bool IsInstallerOnly => GameInstance is null;
+
+    // True when CAMM should start the log-tail speech bridge after
+    // launching the game. Requires both seam interfaces. False for
+    // installer-only mode AND for launcher-mode adopters whose
+    // speech happens in-process (Civ V Access pattern). When false
+    // in launcher mode, CAMM still launches the game and waits for
+    // its lifecycle, just without the log-tail loop.
+    public bool LogTailEnabled => Sanitizer is not null && MarkerProtocol is not null;
 }
