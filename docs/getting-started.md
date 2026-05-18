@@ -74,7 +74,7 @@ Inside that directory create your `.csproj`:
     <!-- App manifest declares Common Controls v6 (TaskDialog) and
          PerMonitorV2 DPI. Required — without this, TaskDialogIndirect
          throws EntryPointNotFoundException at first use. Copy
-         app.manifest from civ-vi-access. -->
+         camm/templates/app.manifest into your project dir (see Step 3). -->
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
@@ -106,6 +106,52 @@ Inside that directory create your `.csproj`:
 </Project>
 ```
 
+### Multi-source single-payload pattern
+
+If your payload's contents are *assembled* from multiple source
+locations (e.g. one DLL from `bin/Debug/net472/`, an XML file from
+`../About/`, a native lib from `../../shared/`), you don't have to
+stage everything into one source folder. Just use multiple
+`<EmbeddedResource>` items — explicit globs or per-file Include —
+all sharing the same `LogicalName` prefix:
+
+```xml
+<ItemGroup>
+  <EmbeddedResource Include="..\About\About.xml">
+    <LogicalName>mod/About/About.xml</LogicalName>
+  </EmbeddedResource>
+
+  <EmbeddedResource Include="..\bin\$(Configuration)\net472\rimworld_access.dll">
+    <LogicalName>mod/Assemblies/rimworld_access.dll</LogicalName>
+  </EmbeddedResource>
+
+  <EmbeddedResource Include="..\..\shared\native\prism.dll">
+    <LogicalName>mod/prism.dll</LogicalName>
+  </EmbeddedResource>
+</ItemGroup>
+```
+
+All three resources live under the `mod/` prefix and extract into
+that payload's `DefaultDestination` at install time, preserving the
+relative path after `mod/`. This is how RimWorld Access adopts CAMM
+without restructuring its source tree.
+
+Multi-glob per prefix is also supported: two separate
+`<EmbeddedResource Include="...">` globs, both with
+`<LogicalName>proxy/...`, will both feed into the `proxy/` payload.
+Civ V Access uses this to pull a proxy DLL from one directory and
+x86 Tolk runtime DLLs from a sibling directory, all into one payload
+destined for the game root.
+
+If any per-file source path might not exist at build time (e.g.
+the DLL hasn't been built yet, the native lib hasn't been
+bootstrapped), wrap with `Condition="Exists('...')"` so the missing
+file silently drops out rather than failing the build. Useful in
+CI bootstrap order or when the source-of-the-source is downloaded
+on first build. Just remember to verify the final embedded resource
+list before shipping — a silently-skipped resource produces a
+broken install.
+
 ### Non-flat-repo gotcha
 
 If your repo has other `.cs` files at the same level as your
@@ -125,11 +171,25 @@ List every sibling directory you want the glob to ignore.
 
 ## Step 3: copy `app.manifest`
 
-Copy `civ-vi-access`'s `CivViAccess/app.manifest` verbatim — it
-declares the Common Controls v6 dependency required by
-`TaskDialogIndirect` (CAMM's `ChannelPickerDialog` and several
-wizard dialogs). Without this, the first TaskDialog call throws
-`EntryPointNotFoundException` at runtime.
+Copy `camm/templates/app.manifest` into your launcher project's
+directory. The template declares:
+
+- The Common Controls v6 dependency required by `TaskDialogIndirect`
+  (CAMM's `ChannelPickerDialog` and several wizard dialogs). Without
+  this, the first TaskDialog call throws `EntryPointNotFoundException`
+  at runtime.
+- An `asInvoker` `<trustInfo>` block that prevents Windows' installer-
+  detection heuristic from auto-elevating the exe at startup. **This
+  matters if your `LauncherExeName` contains the strings `install`,
+  `setup`, `update`, or `patch`** — Windows otherwise demands UAC on
+  every launch of such exes (and `dotnet run` will fail with "the
+  requested operation requires elevation"). The block is harmless when
+  not needed, so it ships in the template by default. CAMM elevates
+  internally via UAC reinvocation when it actually needs to write to
+  Program Files / HKLM; day-to-day operation stays unprivileged.
+- PerMonitorV2 DPI awareness so the wizard renders crisply on
+  high-DPI displays.
+- Windows 10 / 11 in the supportedOS list.
 
 ## Step 4: write `Program.cs`
 
@@ -301,6 +361,109 @@ civ-vi-access, replace the signing account names with your own
 Trusted Signing setup, push a tag, you get a signed exe on the
 GitHub Release.
 
+### `dotnet publish` for the release
+
+The release workflow runs `dotnet publish` to produce the single
+AOT-native exe shipped on GitHub Releases. Locally, the same:
+
+```
+dotnet publish YourModLauncher.csproj ^
+    -c Release -r win-x64 ^
+    -p:Version=0.1.0 ^
+    -p:PublishAot=true
+```
+
+The output is a single `.exe` at
+`bin\Release\net10.0-windows\win-x64\publish\YourModLauncher.exe`.
+The Tolk and payload resources are embedded inside; nothing else
+ships next to it.
+
+If your payload is assembled from a sibling build's outputs (see
+multi-source single-payload above), be aware that
+`<EmbeddedResource Include="..\bin\$(Configuration)\net472\...">`
+inherits `$(Configuration)` from *your launcher's* publish, not
+the sibling's. To embed the Release-built Harmony DLL from a sibling
+project, either build that sibling in Release first
+(`dotnet build ..\rimworld_access.csproj -c Release`) or hard-code
+`Debug` / `Release` in the embed path. The release.yml workflow
+template handles this by building Release across the whole solution
+before publishing the launcher.
+
+## Adopting CAMM for a mod with an existing build pipeline
+
+Many mods already have a working MSBuild flow that produces
+artifacts in `bin/` or a staging dir, plus a deploy script
+(`deploy.ps1`, an MSBuild target, etc.) that copies those to the
+game's mod folder during dev. RimWorld Access has `rimworld_access.csproj`
+producing a Harmony DLL with a `DeployMod` target. Civ V Access has
+a multi-project Avalonia installer plus `deploy.ps1`. The CAMM
+adopter for these mods is a **second project** that sits alongside
+the existing build, NOT a replacement for it.
+
+The shape:
+
+```
+<repo root>/
+├── <existing-mod>.csproj    (produces the DLL — unchanged)
+├── About/                   (existing payload contents)
+├── bin/Release/...          (existing build output)
+├── installer/               (new — the CAMM launcher project)
+│   ├── installer.csproj
+│   ├── Program.cs           (manifest + RunAsync, no other code if installer-only)
+│   └── app.manifest
+└── camm/                    (new — git submodule)
+```
+
+The new project's csproj uses `<EmbeddedResource>` items to slurp
+the existing build outputs (see multi-source single-payload
+pattern above). At dev-time you keep using your existing deploy
+script for fast iteration; at ship-time the CAMM project's
+`dotnet publish` produces the installer that end users actually
+download. The two flows don't interact.
+
+What you typically delete from the pre-CAMM tree:
+
+- A custom installer project (Avalonia / WPF / WinForms wizards),
+  the Apps & Features registration code, and the
+  upload-and-self-update logic. CAMM provides all three.
+- A `deploy.ps1` is **kept** — it's still the fastest path for dev
+  iteration once you stop having to run the full installer to test
+  every change.
+
+What you keep:
+
+- Your existing primary csproj (the one producing the in-game DLL
+  / mod payload).
+- Whatever generates per-developer config (`GamePaths.props.template`,
+  etc.).
+- Any post-build deploy targets that aren't superseded by the
+  installer (they're useful in dev).
+
+The migration is genuinely small: the installer project + 0–4
+small seam-interface classes is typically less than 200 LOC
+total.
+
+## Bitness: x64 launcher + 32-bit game
+
+CAMM's launcher exe is always x64 (the embedded x64 Tolk DLLs and
+the AOT-native code path target x64 specifically). If your **target
+game is 32-bit** (Civ V is x86, several older titles too), this is
+fine — there's no DLL bitness mismatch within the launcher process.
+
+The IFEO redirect intercepts the 32-bit game by exe filename
+regardless of bitness, and `CAMM.ProcessLauncher` spawns the game
+via `DEBUG_PROCESS` which crosses bitness without trouble. The
+launcher and the game are separate processes; the only point of
+overlap is the launcher tailing the game's log file, which is just
+bytes.
+
+The mod payload may itself need to contain 32-bit DLLs for the game
+to load (e.g. a Lua proxy DLL alongside a 32-bit Tolk runtime). Make
+that a separate `ModPayload` whose contents target the game's
+bitness, and embed it from a separate source directory in your
+csproj. Civ V Access does exactly this: launcher x64, `proxy/`
+payload x86, `dlc/` payload bitness-neutral, `engine/` payload x86.
+
 ## Common questions
 
 **"My update check is failing — `GitHubReleasesOwner` / `Repo`
@@ -327,6 +490,19 @@ only mode. Don't set `Sanitizer` / `MarkerProtocol` / `GameInstance`
 / `IfeoTargetExeNames` / `GameProcessNames`. CAMM gives you the
 wizard + Apps & Features + auto-update; speech routing stays your
 mod's responsibility.
+
+**"Dev-mode source-discovery isn't finding my source folder."**
+CAMM's dev-mode walk is parent-walk + one-step-down — it checks
+the launcher exe's containing dir, its parent, its grandparent,
+etc., and at each step looks for an immediate child directory
+matching `FolderName` (plus the sentinel inside it). It does NOT
+recurse deeply. If your source is two-plus segments below the
+launcher exe (e.g. `repo/src/dlc/<your folder>`), dev-mode
+discovery silently no-ops and the launcher falls through to
+embedded-resource extraction. That's fine — install/update flows
+read from embedded resources regardless. You only lose the
+faster dev edit-build-launch loop (rebuild the launcher and embed
+resources update, vs. just rebuilding the mod source).
 
 **"I want to localize CAMM's visible strings into German."** Copy
 `camm/Camm/lang/en.json` to your launcher project's

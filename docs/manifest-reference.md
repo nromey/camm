@@ -174,6 +174,18 @@ initial bring-up before you've stood up a GitHub Releases pipeline).
 
 `manifest.AutoUpdateEnabled` is `true` only if all three are set.
 
+**Setting these before any release exists is safe.** During initial
+bring-up the repo will have no releases (or a single "draft" /
+"prerelease" with no matching asset). CAMM's update check handles
+this gracefully — the GitHub Releases API returns 404 for "no
+releases on this repo," which the updater treats as "no update
+available, carry on." No dialog, no error, no failure. Same for
+the case where releases exist but none match
+`LauncherAssetNamePattern` — the updater logs the miss and moves
+on. You can ship the launcher with these fields populated before
+your release pipeline is wired up; the first real release will
+just start working.
+
 ### `GitHubReleasesOwner : string?`
 
 The GitHub user/org that owns the releases repo.
@@ -317,6 +329,24 @@ FolderName = "CivViAccessMod"
 For multi-payload mods, each payload has its own FolderName — they
 can all live as siblings at the repo root.
 
+**Walk semantics.** The walk is parent-walk + one-step-down: at
+each parent directory, CAMM checks both that directory and its
+immediate children for a folder named `FolderName`. It does NOT
+recurse deeply. If your source lives more than one level inside
+its containing directory (e.g. `repo/src/dlc/<your folder>`),
+dev-mode discovery won't find it; the embedded-resource path is
+your only path, and that's fine — install/update flows always
+read from embedded resources regardless.
+
+**Not-found behavior.** If no matching folder + sentinel is found
+during the walk, CAMM silently skips dev-mode redeploy for that
+payload and proceeds with the embedded-resource extraction. This
+is the expected path for installer-only adopters with existing
+build pipelines (the payload is assembled from build outputs
+elsewhere on disk — there's no single source folder for CAMM to
+find). Set `FolderName` to a plausible string anyway (it's
+required) and don't worry that the folder doesn't exist on disk.
+
 ### `SentinelFileName : string`
 
 A file path **relative to FolderName** that proves the discovered
@@ -329,9 +359,19 @@ SentinelFileName = "About/About.xml"           // sub-path is fine
 SentinelFileName = ""                          // disables the check (any matching folder wins)
 ```
 
+Sub-paths are supported (`"About/About.xml"`, `"src/main.lua"`,
+etc.) — useful when your folder root has no distinctive file but
+a known subdirectory does.
+
 Empty string disables the sentinel check — only the folder name
 match is used. Less safe; use only when your folder name is
 distinctive enough that a name collision is implausible.
+
+**Not-found behavior.** If the folder is found but the sentinel
+file doesn't exist relative to it, CAMM treats the folder as a
+false positive and continues walking. If no `FolderName + sentinel`
+pair is found anywhere on the walk, dev-mode redeploy silently
+no-ops for this payload — see `FolderName` above.
 
 ### `DefaultDestination : Func<string>`
 
@@ -339,12 +379,21 @@ Where this payload deploys at install + update time. Returns a
 directory path (not a file). Called at runtime so it can do
 `Environment.GetFolderPath` resolution.
 
+**Call timing.** CAMM invokes the closure once per `ExtractTo`
+call — i.e. once per install pass and once per update pass per
+payload, not once per file extracted. If your closure reads
+side-channel state (env vars, registry, a config file), reads at
+that cadence will be consistent throughout a single extraction
+but may differ across runs. For deterministic destinations
+(typical case), this doesn't matter.
+
 ```csharp
 DefaultDestination = () => @"C:\Program Files (x86)\Steam\...\DLC\CivViAccessMod"
 
 DefaultDestination = () => Path.Combine(
     Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-    "AppData", "LocalLow", "Ludeon Studios", "RimWorld", "Mods", "MyMod")
+    "AppData", "LocalLow", "Ludeon Studios",
+    "RimWorld by Ludeon Studios", "Mods", "MyMod")
 ```
 
 Single-file payloads: make `DefaultDestination` return the *parent

@@ -11,6 +11,47 @@ can consume CAMM without reading the civ-vi-access source. Pre-1.0
 means any release can break API; consumers pin to a tag SHA and
 upgrade when ready.
 
+## 0.2.1 — 2026-05-17 — Doc patches from v0.2.0 dual-track AI-readability tests
+
+No API changes. Documentation + template patches addressing
+adopter-discovered gaps from the v0.2.0 AI-readability acceptance
+tests (Civ V Access launcher-mode test + RimWorld Access
+installer-only-mode test).
+
+- **`templates/app.manifest`** — new. Ships the canonical app.manifest
+  with Common Controls v6, PerMonitorV2 DPI, Windows 10/11 supportedOS,
+  AND an `asInvoker` `<trustInfo>` block. The trustInfo block prevents
+  Windows' installer-detection heuristic from auto-elevating any exe
+  whose filename contains `install` / `setup` / `update` / `patch` —
+  which was a silent foot-gun for the RimWorld Access adopter who
+  chose `RimWorldAccessInstaller.exe` and got an unrunnable binary.
+- **`docs/getting-started.md`** — Step 3 references the template
+  instead of telling adopters to "copy from civ-vi-access". New
+  "Multi-source single-payload pattern" subsection explaining how
+  to assemble a payload from multiple source dirs via per-file
+  `<EmbeddedResource Include>` items + `Condition="Exists(...)"`.
+  New "Adopting CAMM for a mod with an existing build pipeline"
+  section covering the second-project shape (installer/ project +
+  existing build, what to delete, what to keep). New "Bitness:
+  x64 launcher + 32-bit game" section. New `dotnet publish`
+  walkthrough including the `$(Configuration)` interaction with
+  multi-source payloads. New FAQ entry on dev-mode walk semantics.
+- **`docs/manifest-reference.md`** — LocalLow path example fixed
+  (`"RimWorld" → "RimWorld by Ludeon Studios"`). New paragraph on
+  `FolderName` walk semantics + not-found behavior (parent-walk +
+  one-step-down, silent no-op on miss). New paragraph on
+  `SentinelFileName` not-found behavior. New paragraph on
+  `DefaultDestination` call timing (once per ExtractTo). New
+  paragraph on auto-update fields + empty-releases-repo behavior.
+- **`README.md`** — installer-only mode caveat added about
+  game-side config not being modified (ModsConfig.xml, BepInEx
+  plugin lists). Flags v0.3.0's coming post-install hook.
+
+The `civ-vi-access` reference adopter's `app.manifest` was also
+updated to match the new template (added the `<trustInfo>` block;
+harmless when the exe filename doesn't trigger the UAC heuristic,
+useful for any adopter that copies from civ-vi-access).
+
 ## 0.2.0 — 2026-05-17 — Multi-payload + installer-only mode
 
 API-breaking minor bump. Two architectural changes plus a docs

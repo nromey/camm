@@ -42,6 +42,15 @@ GitHub Releases auto-update, and **skips** the IFEO redirect, Tolk
 speech routing, and game-launch lifecycle (because your mod handles
 all of those itself, from inside the game's process).
 
+**Caveat: CAMM deploys files but does not modify game-side config.**
+If your mod needs the game's mod-list config to be updated (e.g.
+RimWorld's `ModsConfig.xml`, BepInEx's plugin enable list), you'll
+need to document that as a manual step for users today, or wait for
+the post-install hook coming in v0.3.0. CAMM also can't install
+*your mod's* dependencies (RimWorld Access requires the Harmony
+mod separately, for example) — users still acquire those through
+their normal channels.
+
 ### Neither?
 
 CAMM is Windows-only (the launcher exe is `net10.0-windows` with
