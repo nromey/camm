@@ -110,17 +110,15 @@ public static partial class TolkBootstrap
             if (string.IsNullOrEmpty(fileName)) continue;
             var destPath = Path.Combine(targetDir, fileName);
 
-            // Skip if a same-size file is already there — DLL contents
-            // don't change between launcher runs of the same build.
-            if (File.Exists(destPath))
-            {
-                using var existing = asm.GetManifestResourceStream(resourceName);
-                if (existing is not null && new FileInfo(destPath).Length == existing.Length)
-                {
-                    continue;
-                }
-            }
-
+            // Always overwrite. A previous same-size-skip optimization
+            // matched across builds when Tolk versions happened to ship
+            // identical byte counts, leaving stale DLLs in the install
+            // dir after a launcher upgrade and silently breaking speech
+            // (the new launcher loaded against an older Tolk that
+            // reported HasSpeech=True but did nothing audible on Output).
+            // For PrepareRuntime's temp-dir case the dir is per-pid and
+            // fresh, so always-overwrite costs nothing. For the
+            // Installer case it's the whole point.
             using var stream = asm.GetManifestResourceStream(resourceName);
             if (stream is null) continue;
             try

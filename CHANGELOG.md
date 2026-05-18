@@ -11,6 +11,56 @@ can consume CAMM without reading the civ-vi-access source. Pre-1.0
 means any release can break API; consumers pin to a tag SHA and
 upgrade when ready.
 
+## 0.5.3 — 2026-05-18 — Speech-pipeline fixes discovered under load
+
+Bundled fixes from a multi-hour CivViAccess AdvancedSetup test session
+where three latent issues compounded into "no speech at all from the
+installed launcher":
+
+### Logger no longer truncates per session
+
+`Logger.StartSession` previously did `File.WriteAllText(LogPath, "")`
+on every launch. When the IFEO-redirected child launcher (Process B)
+started its session, it wiped the parent launcher (Process A)'s
+in-flight log. The interesting log was always Process A's (full game
+lifecycle, log-tail, all speech), so diagnostic work was effectively
+blind. Now appends with a session banner; the file grows but the
+write rate is negligible (~one session per game launch).
+
+### Tolk DLLs are force-overwritten on install
+
+`TolkBootstrap.ExtractTo` had a "skip if same-size file already there"
+optimization. Tolk version updates can ship same-size binaries, so
+when a user upgraded their launcher exe on top of an older install,
+ExtractTo skipped writing the new DLLs and the new launcher loaded
+the old Tolk. `Tolk.IsLoaded` returned true (old DLL loaded fine),
+`HasSpeech` returned true (old DLL's SAPI probe worked), but
+`Tolk.Output` calls silently produced no audible speech because of
+ABI drift between the new launcher's expectations and the old DLL.
+Always overwrite now — the per-pid temp dir case is unaffected (fresh
+dir each time), the install case is what this fixes.
+
+### Transparent-invocation re-entry no longer breaks log-tail
+
+v0.5.2's unconditional short-circuit fired for EVERY transparent
+invocation, including the legitimate first one (IFEO redirect from the
+user-launched `CivilizationVI.exe`). Process A short-circuited and
+exited, so log-tail never started — the user heard zero in-game
+speech even though the mod was emitting `#SCREENREADER` lines fine.
+
+Correct rule: the first launcher to acquire the single-instance mutex
+runs the full lifecycle (log-tail + game wait), regardless of whether
+it's transparent-invoked. Subsequent launchers (mutex contended)
+check whether they're transparent — if yes, bypass-spawn the IFEO
+target and exit silently so the game's internal exe chain
+(`CivilizationVI.exe -> CivilizationVI_DX12.exe`) keeps working
+without firing a confusing "another launcher running" announcement
+mid-game-startup.
+
+Mutex acquire signature picked up a `speakIfContended` parameter so
+the transparent re-entry path can suppress the spoken warning while
+still using the same mutex.
+
 ## 0.5.2 — 2026-05-18 — Transparent invocation short-circuit in launcher mode
 
 Bug fix paired with v0.5.1: the mutex caught user-initiated launcher

@@ -34,14 +34,28 @@ public static class Logger
     }
 
     // Call once at process startup, after CammHost.Initialize, to begin
-    // a fresh session log.
+    // a new session in the log.
+    //
+    // Appends rather than truncates: when launcher A is mid-session and
+    // launcher B starts (IFEO-redirected child for an internal exe
+    // spawn — see CammHost transparent-invocation short-circuit), B's
+    // StartSession used to wipe A's log. The interesting log was always
+    // A's (it's the one with the actual game lifecycle, log-tail, and
+    // user-facing speech) and getting it overwritten by B's tiny pre-
+    // exit session made diagnostic work impossible. We now banner each
+    // new session inline and let the file grow. Size is bounded by
+    // user re-launching the game so it doesn't grow without limit; if
+    // it ever becomes a problem we'll rotate.
     public static void StartSession(string mode)
     {
         lock (_lock)
         {
             try
             {
-                File.WriteAllText(LogPath, "");
+                var path = LogPath;
+                // Ensure the file exists. AppendAllText creates if missing.
+                if (!File.Exists(path)) File.WriteAllText(path, "");
+                Write("INFO", "");
                 Write("INFO", $"=== launcher session start, mode={mode}, pid={Environment.ProcessId}, exe={Environment.ProcessPath} ===");
                 Write("INFO", $"  AppContext.BaseDirectory={AppContext.BaseDirectory}");
                 Write("INFO", $"  Args={string.Join(" ", Environment.GetCommandLineArgs())}");

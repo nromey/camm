@@ -297,55 +297,35 @@ public static class CammHost
         // ---- Launcher mode below this line. GameInstance is non-null. ----
         var gameInstance = manifest.GameInstance!;
 
-        // Transparent invocation in launcher mode (IFEO-spawned re-entry).
+        // Single-instance gate + transparent-invocation re-entry handler.
         //
-        // Civ-VI-style games often launch an internal child exe at
-        // runtime (CivilizationVI.exe -> CivilizationVI_DX12.exe). When
-        // BOTH exes are registered in IFEO, the child spawn re-fires IFEO
-        // and Windows starts a second launcher process with the child exe
-        // path as args[0]. Without this short-circuit, the second
-        // launcher would run the full launcher-mode flow (log-tail, game
-        // lifecycle wait), and tailing the same Lua.log twice causes
-        // every screen-reader announcement to be routed to Tolk twice
-        // ~100 ms apart — fast keyboard nav becomes unintelligible.
+        // Two related cases share this gate:
         //
-        // The single-instance mutex below catches user-initiated dups
-        // (double-clicking a shortcut, leaked self-update relaunch). It
-        // does NOT catch this case correctly: blocking Process B would
-        // also prevent it from spawning the IFEO-targeted child exe, so
-        // the game itself would fail to launch. Process B is doing
-        // legitimate work — it just shouldn't log-tail. The right fix is
-        // to spawn-and-exit before reaching the mutex, exactly the way
-        // installer-only mode (above) already handles transparent
-        // invocation. Mirroring that pattern here.
-        if (transparentInvocation
-            && !string.IsNullOrEmpty(transparentGamePath)
-            && File.Exists(transparentGamePath))
-        {
-            Log($"Spawning {transparentGamePath} (launcher-mode transparent invocation; log-tail owned by parent launcher).");
-            try
-            {
-                var transparentPid = ProcessLauncher.LaunchBypassingIfeo(
-                    transparentGamePath, passthroughGameArgs);
-                Logger.Info($"  LaunchBypassingIfeo returned pid={transparentPid}");
-                return 0;
-            }
-            catch (Exception ex)
-            {
-                Logger.Exception("LaunchBypassingIfeo (launcher-mode transparent) threw", ex);
-                return 1;
-            }
-        }
-
-        // Single-instance gate. Two launchers running against the same
-        // adopter both tail the game's Lua.log and both route every
-        // marker-prefixed line to Tolk independently. The user hears
-        // every announcement echoed ~100ms apart, and the second fire
-        // interrupts the first mid-word — fast nav becomes unintelligible.
-        // Acquire a named mutex keyed to the adopter's
-        // LocalAppDataFolderName so different CAMM-built launchers (Civ
-        // VI Access vs a hypothetical Factorio adopter) don't collide on
-        // a shared mutex. Held until process exit.
+        //  1. User double-launches the launcher (shortcut clicked twice,
+        //     leaked self-update relaunch). The second invocation should
+        //     speak "another launcher running" and exit with code 3.
+        //  2. Civ-VI-style games launch an internal child exe at runtime
+        //     (CivilizationVI.exe -> CivilizationVI_DX12.exe). When both
+        //     exes are registered in IFEO, the child spawn re-fires IFEO
+        //     and Windows starts a second launcher with the child path as
+        //     args[0] (transparent invocation). That second launcher's
+        //     legitimate work is "bypass-spawn the target so the game's
+        //     exe chain continues" — NOT log-tail (the parent launcher,
+        //     which got the mutex first, already owns log-tail for the
+        //     whole game session). Two log-tails on the same Lua.log
+        //     caused the original screen-reader echo bug.
+        //
+        // The decision rule:
+        //   * Acquire mutex succeeds → we're the first launcher → full
+        //     launcher flow below (log-tail, lifecycle wait, etc.). This
+        //     includes the FIRST IFEO redirect when the user launches
+        //     the game via Steam / a shortcut to CivilizationVI.exe —
+        //     that's still our parent launcher, even though it's
+        //     transparent-invoked.
+        //   * Acquire mutex fails (held by an existing launcher) → we
+        //     are case 2 if transparent, else case 1.
+        //     - Case 2: bypass-spawn the target and exit silently.
+        //     - Case 1: speak the "another launcher" message and exit.
         //
         // Per-session scope (Local\) rather than system-wide (Global\):
         // different desktop sessions can each have their own running
@@ -353,8 +333,36 @@ public static class CammHost
         // args-dispatch routes (--install / --uninstall / --version /
         // --config) so those one-shot operations still run alongside an
         // active launcher.
-        var singleInstance = TryAcquireSingleInstance(manifest, Speak);
-        if (singleInstance is null) return 3;
+        var singleInstance = TryAcquireSingleInstance(manifest, Speak,
+            speakIfContended: !transparentInvocation);
+        if (singleInstance is null)
+        {
+            // Mutex contended. If we're a transparent-invocation re-entry
+            // (case 2 above), bypass-spawn the IFEO target so the game's
+            // internal exe chain continues; the parent launcher already
+            // holds log-tail.
+            if (transparentInvocation
+                && !string.IsNullOrEmpty(transparentGamePath)
+                && File.Exists(transparentGamePath))
+            {
+                Log($"Spawning {transparentGamePath} (transparent re-entry; parent launcher owns log-tail).");
+                try
+                {
+                    var transparentPid = ProcessLauncher.LaunchBypassingIfeo(
+                        transparentGamePath, passthroughGameArgs);
+                    Logger.Info($"  LaunchBypassingIfeo returned pid={transparentPid}");
+                    return 0;
+                }
+                catch (Exception ex)
+                {
+                    Logger.Exception("LaunchBypassingIfeo (transparent re-entry) threw", ex);
+                    return 1;
+                }
+            }
+            // User-initiated duplicate (case 1). TryAcquireSingleInstance
+            // already spoke the warning. Exit with a distinct code.
+            return 3;
+        }
         // Ensure the mutex is released on any return path below.
         AppDomain.CurrentDomain.ProcessExit += (_, _) =>
         {
@@ -704,7 +712,13 @@ public static class CammHost
     // locked out forever after a single crash would be a worse failure
     // mode than the (very small) risk of two launchers racing during a
     // recovery window.
-    private static Mutex? TryAcquireSingleInstance(CammModManifest manifest, Action<string> speak)
+    // speakIfContended: when false, suppress the "another launcher running"
+    // spoken message on contention. Used for transparent-invocation re-entry
+    // where the caller knows what to do with the contention (bypass-spawn
+    // the IFEO target) and would be confused by a screen-reader announcement
+    // about another launcher mid-game-startup.
+    private static Mutex? TryAcquireSingleInstance(CammModManifest manifest, Action<string> speak,
+        bool speakIfContended = true)
     {
         // Local\ prefix = per-session. Keying off LocalAppDataFolderName
         // (e.g. "CivVIAccess") so different CAMM-built launchers don't
@@ -745,7 +759,10 @@ public static class CammHost
         }
         var msg = Strings.Get("Speech.AnotherLauncherRunning");
         Console.Error.WriteLine(msg);
-        speak(msg);
+        if (speakIfContended)
+        {
+            speak(msg);
+        }
         try { mutex.Dispose(); } catch { /* ignore */ }
         return null;
     }
