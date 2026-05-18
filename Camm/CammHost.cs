@@ -297,6 +297,31 @@ public static class CammHost
         // ---- Launcher mode below this line. GameInstance is non-null. ----
         var gameInstance = manifest.GameInstance!;
 
+        // Single-instance gate. Two launchers running against the same
+        // adopter both tail the game's Lua.log and both route every
+        // marker-prefixed line to Tolk independently. The user hears
+        // every announcement echoed ~100ms apart, and the second fire
+        // interrupts the first mid-word — fast nav becomes unintelligible.
+        // Acquire a named mutex keyed to the adopter's
+        // LocalAppDataFolderName so different CAMM-built launchers (Civ
+        // VI Access vs a hypothetical Factorio adopter) don't collide on
+        // a shared mutex. Held until process exit.
+        //
+        // Per-session scope (Local\) rather than system-wide (Global\):
+        // different desktop sessions can each have their own running
+        // launcher without one blocking the other. Acquired AFTER the
+        // args-dispatch routes (--install / --uninstall / --version /
+        // --config) so those one-shot operations still run alongside an
+        // active launcher.
+        var singleInstance = TryAcquireSingleInstance(manifest, Speak);
+        if (singleInstance is null) return 3;
+        // Ensure the mutex is released on any return path below.
+        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        {
+            try { singleInstance.ReleaseMutex(); } catch { /* not owned or already released */ }
+            singleInstance.Dispose();
+        };
+
         var gameExePath = transparentInvocation
             ? transparentGamePath
             : gameInstance.FindGameExe();
@@ -627,6 +652,62 @@ public static class CammHost
                 log("User exited from already-installed dialog.");
                 return 0;
         }
+    }
+
+    // Try to acquire the single-instance mutex. Returns null when another
+    // launcher already holds it (and announces / logs the conflict so the
+    // user knows why we exited). Returns the Mutex when we own it; the
+    // caller must keep it alive (ProcessExit handler releases + disposes).
+    //
+    // AbandonedMutexException semantics: the prior owner crashed without
+    // releasing. We still treat that as "we got it" — leaving the user
+    // locked out forever after a single crash would be a worse failure
+    // mode than the (very small) risk of two launchers racing during a
+    // recovery window.
+    private static Mutex? TryAcquireSingleInstance(CammModManifest manifest, Action<string> speak)
+    {
+        // Local\ prefix = per-session. Keying off LocalAppDataFolderName
+        // (e.g. "CivVIAccess") so different CAMM-built launchers don't
+        // collide on a shared mutex.
+        var name = $"Local\\Camm.SingleInstance.{manifest.LocalAppDataFolderName}";
+        var mutex = new Mutex(initiallyOwned: false, name, out bool createdNew);
+        if (createdNew)
+        {
+            try
+            {
+                if (mutex.WaitOne(TimeSpan.Zero))
+                {
+                    Logger.Info($"Acquired single-instance mutex '{name}'.");
+                    return mutex;
+                }
+            }
+            catch (AbandonedMutexException)
+            {
+                Logger.Warn($"Single-instance mutex '{name}' was abandoned by a prior crashed launcher; reclaiming.");
+                return mutex;
+            }
+        }
+        else
+        {
+            try
+            {
+                if (mutex.WaitOne(TimeSpan.Zero))
+                {
+                    Logger.Info($"Acquired existing single-instance mutex '{name}'.");
+                    return mutex;
+                }
+            }
+            catch (AbandonedMutexException)
+            {
+                Logger.Warn($"Single-instance mutex '{name}' was abandoned; reclaiming.");
+                return mutex;
+            }
+        }
+        var msg = Strings.Get("Speech.AnotherLauncherRunning");
+        Console.Error.WriteLine(msg);
+        speak(msg);
+        try { mutex.Dispose(); } catch { /* ignore */ }
+        return null;
     }
 
     private static bool AnyGameProcessRunning()

@@ -11,6 +11,49 @@ can consume CAMM without reading the civ-vi-access source. Pre-1.0
 means any release can break API; consumers pin to a tag SHA and
 upgrade when ready.
 
+## 0.5.1 — 2026-05-18 — Single-instance launcher gate
+
+Bug fix discovered during a CivViAccess screen-reader test session.
+Two CAMM launcher processes can end up running against the same
+adopter (a self-update relaunch that doesn't fully terminate the
+prior process, a stale instance from a previous run that never
+exited cleanly, etc.). Both processes tail the game's Lua.log and
+both route every marker-prefixed line to Tolk independently, so the
+user hears every announcement echoed ~100 ms apart. The second
+fire interrupts the first mid-word, which combined with fast
+keyboard nav produces unintelligible truncated readouts ("culture
+victory, c", "diplomatic victory, c", "religious victory, ch") and
+makes the screen reader experience unusable.
+
+### Mutex-based single-instance gate
+
+Right before the launcher would spawn the game (launcher mode), CAMM
+now tries to acquire a named per-session mutex
+(`Local\Camm.SingleInstance.<LocalAppDataFolderName>`). The first
+launcher gets it and proceeds; any later launcher invocation finds
+the mutex held, speaks `Speech.AnotherLauncherRunning`, and exits
+with code 3. Mutex releases on process exit (registered ProcessExit
+handler). `AbandonedMutexException` is treated as "we got it" so a
+single crash never permanently locks the user out.
+
+Placement notes:
+- Per-session scope (`Local\`) rather than system-wide (`Global\`):
+  different desktop sessions can each have their own running
+  launcher.
+- Keyed off `LocalAppDataFolderName` so future CAMM consumers
+  (Factorio adopter etc.) get their own mutex name and can coexist.
+- Acquired AFTER args-dispatch routes (`--install` / `--uninstall`
+  / `--version` / `--config` / `--wizard-test`) so those one-shot
+  operations still run alongside an active launcher.
+- Installer-only mode skipped: that mode's process is a short
+  update-check-then-spawn-and-exit, so concurrent invocations are
+  expected and benign.
+
+### New string
+
+- `Speech.AnotherLauncherRunning` — spoken when the second launcher
+  invocation is refused.
+
 ## 0.5.0 — 2026-05-18 — Update-only IFEO + installer-only example
 
 Closes the gap the v0.4.0 RimWorld Access AI-readability test

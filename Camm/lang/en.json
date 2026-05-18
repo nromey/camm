@@ -112,6 +112,7 @@
   "Speech.GameNotFound": "Could not find __TARGET_GAME__ at the expected location. If __TARGET_LAUNCHER__ is installed somewhere non-default, run the launcher via __TARGET_LAUNCHER__'s Play button (the IFEO redirect will pass the right path).",
   "Speech.ForegroundFailed": "Could not focus __TARGET_GAME__. Press Alt+Tab to switch to the game window.",
   "Speech.GameStartupTimeout": "__TARGET_GAME__ did not start within 2 minutes.",
+  "Speech.AnotherLauncherRunning": "Another __DISPLAY_NAME__ launcher is already running. Close it first, then try again.",
 
   "Dependency.Prompt.Title": "__DISPLAY_NAME__ — Required component",
   "Dependency.Prompt.Instruction": "__DISPLAY_NAME__ needs __DEPENDENCY_DISPLAY_NAME__ to function.",
