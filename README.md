@@ -105,7 +105,7 @@ keeps it updated, launches any helpers required to run the mod, and
 hands control over to the game.
 
 Also worth being upfront: **Civ VI Access itself is not complete,
-but the installer is.** Many in-game screens in Civ VI Access still
+but the installer is.** We are actively working on the mod, and we hope to have a playable Sid Meier's Civilization VI soon. Many in-game screens in Civ VI Access still
 don't have accessibility coverage. We extracted CAMM out of that
 mid-development work rather than after the fact, because the gap
 CAMM fills was apparent from the first ship — and waiting until
@@ -136,7 +136,7 @@ your launcher tails its log file and forwards screen-reader-bound
 lines to Tolk. When the game exits, CAMM cleans up with a closed
 announcement.
 
-This is the Civ VI Access / Civ V Access shape: a Lua-or-similar
+This is the Civ VI Access / Civ V Access execution shape: a Lua-or-similar
 mod that lives inside the game, a Tolk speech bridge connecting
 the game's speech-bound output to the user's screen reader, and an
 IFEO transparent launcher tying it all together.
@@ -158,7 +158,7 @@ mod, an in-game C# plugin. The user launches the game normally,
 the game loader picks up your DLL, and your DLL handles everything
 from there.
 
-You still want a polished installer, an Apps & Features entry, an
+If you want to use CAMM, you'll still want a polished installer, an Apps & Features entry, an
 auto-updater, and accessibility-friendly install UX. That's exactly
 what CAMM gives you in installer-only mode: the install wizard,
 Apps & Features registration, GitHub Releases auto-update — and
@@ -168,6 +168,15 @@ lifecycle, because none of those apply to your mod.
 This is the RimWorld Access / BepInEx-plugin / Harmony-DLL shape.
 CAMM hands you a single `.exe` your users can double-click; from
 there CAMM stays out of the way of your in-game mod.
+
+You still get the benefit of the mod updater: opt into v0.5's
+update-only-IFEO mode (set `IfeoTargetExeNames` on the manifest)
+and CAMM will check for updates every time the user launches the
+game, applying anything new before handing control off. If you'd
+rather keep CAMM completely out of the launch path, leave
+`IfeoTargetExeNames` null and updates apply whenever the user
+re-runs the installer. Either way, no manual zip-tracking for
+your users.
 
 **A word on signing.** CAMM ships the *release pipeline template*,
 not a signing identity. If you have your own Authenticode
@@ -200,11 +209,11 @@ so your users only have to double-click your installer once.
 CAMM is Windows-only. The launcher exe targets `net10.0-windows`,
 makes P/Invokes into `kernel32`, `user32`, `comctl32`, and the
 Windows registry, and the Tolk runtime it bundles is Windows-only
-too. If your mod targets macOS or Linux, CAMM isn't a fit — fork
+too. If your mod targets macOS or Linux, CAMM isn't currently a fit — fork
 it, or look elsewhere.
 
 CAMM is also built around **single-exe deployment**. Your user
-downloads one `.exe`, double-clicks, and is installed. If your
+downloads one `.exe`, double-clicks, and their mod is installed. If your
 mod's distribution path is a `.zip`, an `.msi`, a `.deb`, or some
 other format, CAMM probably isn't the right tool either.
 
@@ -214,14 +223,14 @@ Once you've adopted CAMM, every CAMM-built launcher comes with:
 
 - **A 5-page WinForms install wizard** (Welcome, Update channel,
   Ready, Installing, Done) with accessibility-first speech
-  orchestration. Tolk-driven page announcements that beat NVDA's
+  orchestration. screen reader-driven page announcements that beat NVDA or JAWS's
   focus-event race, per-page initial focus, deterministic combobox
   announcements, and a full cancel-confirm flow that doesn't lose
   the user's place.
 - **Localizable strings.** Every visible string flows through a
   JSON locale catalog (`lang/<culture>.json`) with manifest-driven
   token substitution (`__DISPLAY_NAME__`, `__TARGET_GAME__`, and so
-  on). Translators drop new locale files; nothing else changes.
+  on). Translators like Crowdin drop new locale files; nothing else changes.
   Mode-aware variants (`<key>.InstallerOnly`) automatically override
   wording that doesn't apply when CAMM isn't acting as a launcher.
 - **Multi-payload install, update, and uninstall.** A single mod
@@ -234,7 +243,7 @@ Once you've adopted CAMM, every CAMM-built launcher comes with:
   Windows Settings → Apps. The Modify button opens your
   update-channel picker.
 - **GitHub Releases auto-update**, with Stable / Latest / Off
-  channels. CAMM polls GitHub for newer releases every time the
+  channels. CAMM polls GitHub for newer mod releases every time the
   launcher exe runs, and applies updates with a `.pending`
   self-update swap. Launcher mode runs the launcher on every game
   launch via the IFEO redirect. Installer-only adopters can opt into
@@ -313,6 +322,31 @@ The short version, once you've decided CAMM is right for your mod:
 shows the full launcher-mode shape in about 200 lines across four
 files. When something in the docs is unclear, that repo is your
 second source of truth.
+
+## Why .NET 10
+
+Two reasons we picked .NET 10 over earlier framework versions:
+
+1. **Long-Term Support.** .NET 10 is the current LTS release —
+   supported by Microsoft through November 2028 with security and
+   stability updates. Adopting an LTS version means CAMM (and your
+   mod) won't have to chase a new framework version every 18 months;
+   the even-numbered .NET releases are the stable foundation, and
+   10 is the freshest of those.
+
+2. **Mature Native AOT.** AOT compiles your launcher into a single
+   self-contained native `.exe` with the runtime baked in — that's
+   what lets us promise "no first-install-.NET friction" for end
+   users, and what makes the binary cold-start in well under a
+   second. WinForms-under-AOT was historically painful; .NET 10's
+   improvements (plus a small documented escape hatch in your
+   csproj — `<_SuppressWinFormsTrimError>true</_SuppressWinFormsTrimError>`)
+   make it routine.
+
+The combination is the unlock for CAMM's single-exe deployment
+story: long enough support window that adopters aren't on a
+treadmill, AOT good enough that the resulting binary is genuinely
+self-contained.
 
 ## Reference docs
 
