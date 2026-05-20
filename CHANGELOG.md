@@ -27,14 +27,23 @@ Tolk's natural last-write-wins handles rapid different-event
 interrupts (Down → Alt+V works; the toggle's announce interrupts
 the arrow announce just like before v0.5.4).
 
-The original "sticky Alt+V" symptom (rapid Alt+V Alt+V) is
-unaffected — Tolk will speak partial-first + full-second of the two
-different "Verbose off" / "Verbose on" texts, and the user hears
-the final state which matches the toggled reality. Future work to
-make rapid toggling more audible-distinct will use earcons
-(distinct enable/disable sounds via ElevenLabs-generated samples or
-the wav-synth pattern) so we stop trying to solve a UX problem
-inside the speech race.
+**Known limitation:** the original "sticky Alt+V" symptom (rapid
+Alt+V Alt+V) is **hit-and-miss in this release**. Tolk will speak
+partial-first + full-second of the two different "Verbose off" /
+"Verbose on" texts; depending on press timing the user may hear
+only a fragment of the first announce before the second interrupts.
+State is always correct (the toggle cycles as expected) but the
+audible confirmation isn't reliable for rapid same-key spam. This
+isn't a speech-pipeline bug we can clean up at the Tolk layer
+without breaking other flows like Down → Alt+V interrupt, which is
+the regression v0.5.6 actually fixes. Prism wouldn't help either —
+its interrupt model is the same last-write-wins as Tolk (see
+[[reference-prism-screen-reader-library]]). The right fix lives at
+a different layer entirely: distinct enable/disable **earcons**
+(short non-speech tones that don't compete in the interrupt model)
+played alongside or instead of the speech announce. Planned via
+ElevenLabs Creator trial 2026-05-20 onward — see CivViAccess memory
+notes on the earcon system.
 
 Timer + pending-slot machinery removed. Net diff: -50 lines, no new
 fields beyond `_lastSpokenText` / `_lastSpokenAt`.
