@@ -11,6 +11,34 @@ can consume CAMM without reading the civ-vi-access source. Pre-1.0
 means any release can break API; consumers pin to a tag SHA and
 upgrade when ready.
 
+## 0.5.6 — 2026-05-19 — Replace coalesce with identical-text dedupe
+
+v0.5.4/v0.5.5's deferred-pending coalesce window broke normal
+interaction. The window held the latest interrupt-mode text and
+replayed it 150ms later — but when the user pressed Down arrow then
+Alt+V quickly, the verbosity toggle's "Verbose off" got stomped by
+the next arrow announce that arrived within the window, so they
+heard the arrow announce twice and the toggle confirmation never.
+
+Replaced with a simpler identical-text dedupe: if the exact same
+text was sent within IdenticalDedupeWindow (250ms), drop the
+duplicate. Different text always reaches Tolk immediately, so
+Tolk's natural last-write-wins handles rapid different-event
+interrupts (Down → Alt+V works; the toggle's announce interrupts
+the arrow announce just like before v0.5.4).
+
+The original "sticky Alt+V" symptom (rapid Alt+V Alt+V) is
+unaffected — Tolk will speak partial-first + full-second of the two
+different "Verbose off" / "Verbose on" texts, and the user hears
+the final state which matches the toggled reality. Future work to
+make rapid toggling more audible-distinct will use earcons
+(distinct enable/disable sounds via ElevenLabs-generated samples or
+the wav-synth pattern) so we stop trying to solve a UX problem
+inside the speech race.
+
+Timer + pending-slot machinery removed. Net diff: -50 lines, no new
+fields beyond `_lastSpokenText` / `_lastSpokenAt`.
+
 ## 0.5.5 — 2026-05-19 — Fix v0.5.4 build break (Timer disambiguation)
 
 v0.5.4's coalesce-window implementation referenced `Timer` unqualified.

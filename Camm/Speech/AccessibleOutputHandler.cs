@@ -13,95 +13,66 @@ namespace Camm.Speech;
 // chopped off by the next routine line. Window expires after 3
 // seconds of speech idle.
 //
-// Rapid-interrupt coalescing: Tolk's Output(text, interrupt=true)
-// is last-write-wins — a second interrupt call within tens of
-// milliseconds of the first silences whatever was just queued
-// before any audible part of it plays. This was observed as
-// "sticky Alt+V" — toggling verbosity twice in quick succession
-// produced silence. The coalesce window holds the most recent
-// interrupt-mode text for MinInterruptInterval after firing one,
-// and plays whichever message was the latest pending when the
-// window expires. Single utterances pass through immediately;
-// rapid bursts collapse to first-played + last-pending.
+// Identical-text dedupe: an earlier v0.5.4/v0.5.5 attempt held the
+// latest pending interrupt-mode text for a window and replayed it
+// after 150ms. That broke normal flow — pressing Down arrow then
+// Alt+V quickly caused the verbosity toggle's "Verbose off" to be
+// stomped by the next arrow announce in the pending slot, so the
+// user heard the second arrow but not the toggle confirmation.
+//
+// What works correctly across all observed cases: let Tolk's natural
+// last-write-wins behavior handle rapid different-text interrupts
+// (Tolk speaks partial-first + full-second, user hears the final
+// state which matches reality). The only thing worth filtering is
+// IDENTICAL text arriving twice within a short window — that's
+// observable as accidental re-announce on the same item, and we
+// drop the duplicate.
+//
+// This is intentionally simple: no timer, no pending slot, no
+// deferral. Just "if the same text was spoken N ms ago, drop the
+// duplicate." Different text always reaches Tolk immediately.
 public sealed class AccessibleOutputHandler
 {
     private DateTime _lastNonInterruptableMessage = DateTime.MinValue;
     private static readonly TimeSpan NonInterruptTime = TimeSpan.FromSeconds(3);
 
-    private readonly object _coalesceLock = new();
-    private DateTime _interruptCooldownUntil = DateTime.MinValue;
-    private string? _pendingInterruptText;
-    // Fully-qualified: Camm.csproj has UseWindowsForms=true (for the
-    // install wizard), so plain `Timer` is ambiguous against
-    // System.Windows.Forms.Timer. We want the threading variant.
-    private readonly System.Threading.Timer _coalesceTimer;
-    private static readonly TimeSpan MinInterruptInterval = TimeSpan.FromMilliseconds(150);
+    private readonly object _dedupeLock = new();
+    private string? _lastSpokenText;
+    private DateTime _lastSpokenAt = DateTime.MinValue;
+    private static readonly TimeSpan IdenticalDedupeWindow = TimeSpan.FromMilliseconds(250);
 
     public AccessibleOutputHandler()
     {
         Tolk.TrySAPI(true);
         Tolk.Load();
-        _coalesceTimer = new System.Threading.Timer(
-            CoalesceTimerCallback, null,
-            System.Threading.Timeout.Infinite,
-            System.Threading.Timeout.Infinite);
     }
 
     public void Speak(string text, bool interrupt = true)
     {
-        SpeakWithCoalesce(text, interrupt);
+        SpeakInternal(text, interrupt);
     }
 
-    // Single chokepoint for Tolk.Output calls so the coalesce window
+    // Single chokepoint for Tolk.Output calls so the dedupe filter
     // applies uniformly to every speech path (Speak() direct callers
     // AND OutputMessage's per-line dispatch).
-    private void SpeakWithCoalesce(string text, bool interrupt)
+    private void SpeakInternal(string text, bool interrupt)
     {
-        if (!interrupt)
+        if (interrupt)
         {
-            // Non-interrupt speaks queue naturally in Tolk's pipeline
-            // and don't trigger the swallow, so they bypass coalescing.
-            Tolk.Output(text, false);
-            return;
-        }
-        lock (_coalesceLock)
-        {
-            var now = DateTime.UtcNow;
-            if (now >= _interruptCooldownUntil)
+            lock (_dedupeLock)
             {
-                // Cooldown expired (or never started). Fire immediately.
-                Tolk.Output(text, true);
-                _interruptCooldownUntil = now + MinInterruptInterval;
-                _pendingInterruptText = null;
-            }
-            else
-            {
-                // Within cooldown — defer. The latest text wins; if
-                // multiple interrupts pile up, only the most recent
-                // plays when the window expires.
-                _pendingInterruptText = text;
-                var remainingMs = (int)Math.Max(1, (_interruptCooldownUntil - now).TotalMilliseconds);
-                _coalesceTimer.Change(remainingMs, System.Threading.Timeout.Infinite);
+                var now = DateTime.UtcNow;
+                if (text == _lastSpokenText
+                    && now - _lastSpokenAt < IdenticalDedupeWindow)
+                {
+                    // Same line within the window — drop the duplicate.
+                    return;
+                }
+                _lastSpokenText = text;
+                _lastSpokenAt = now;
             }
         }
-    }
-
-    private void CoalesceTimerCallback(object? state)
-    {
-        string? toSpeak;
-        lock (_coalesceLock)
-        {
-            toSpeak = _pendingInterruptText;
-            _pendingInterruptText = null;
-            if (toSpeak != null)
-            {
-                _interruptCooldownUntil = DateTime.UtcNow + MinInterruptInterval;
-            }
-        }
-        if (toSpeak != null)
-        {
-            Tolk.Output(toSpeak, true);
-        }
+        Tolk.Output(text, interrupt);
     }
 
     public void OutputMessage(string message)
@@ -133,7 +104,7 @@ public sealed class AccessibleOutputHandler
 
             var sanitized = sanitizer.Sanitize(line);
             Logger.Info($"OutputMessage forwarding to Tolk (interrupt={interrupt}): '{sanitized}'");
-            SpeakWithCoalesce(sanitized, interrupt);
+            SpeakInternal(sanitized, interrupt);
         }
     }
 }
