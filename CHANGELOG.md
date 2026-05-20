@@ -11,6 +11,48 @@ can consume CAMM without reading the civ-vi-access source. Pre-1.0
 means any release can break API; consumers pin to a tag SHA and
 upgrade when ready.
 
+## 0.5.4 — 2026-05-19 — Rapid-interrupt coalesce + shorter update speech
+
+Two fixes that surfaced during CivViAccess AdvancedSetup verbosity-
+toggle testing.
+
+### Rapid-interrupt coalesce window (the "sticky Alt+V" fix)
+
+`AccessibleOutputHandler` adds a coalesce window around its Tolk
+output. Tolk's `Output(text, interrupt=true)` is last-write-wins —
+a second interrupt call within tens of milliseconds of the first
+silences whatever was just queued, before any audible part plays.
+This surfaced as "sticky Alt+V" in CivViAccess: rapidly toggling
+verbosity twice produced silence even though the state correctly
+cycled, because the second interrupt killed the first announcement.
+
+The fix: after firing an interrupt-mode `Tolk.Output`, lock out
+subsequent interrupt-mode calls for 150ms. Calls arriving within
+the window are held as a "pending" slot and the latest one wins;
+a `Timer` fires at the end of the window to play whatever was
+pending. Single utterances pass through immediately; rapid bursts
+collapse to first-played + last-pending so the final state is
+always audible. Non-interrupt calls bypass the coalescer (they
+queue naturally in Tolk's pipeline and don't trigger the swallow).
+
+All speech now funnels through a single `SpeakWithCoalesce`
+chokepoint, so the protection applies to both direct `Speak()`
+callers and `OutputMessage`'s per-line dispatch.
+
+### Shorter update-speech utterance
+
+`Speech.UpdateToVersionPrefix` / `Speech.UpdateToVersionSuffix` LOC
+keys are replaced with a single `Speech.UpdateMod = "Updating mod"`.
+The original "Updating to version X.Y.Z." routinely got cut off by
+the next speech event before Tolk could finish; the new utterance
+fits within the window. The version number is still visible in the
+launcher console output and Lua.log for users who want the exact
+value.
+
+Adopters with non-English `lang/<locale>.json` files should update
+`Speech.UpdateToVersionPrefix` / `Speech.UpdateToVersionSuffix` →
+`Speech.UpdateMod` accordingly. No other API surface change.
+
 ## 0.5.3 — 2026-05-18 — Speech-pipeline fixes discovered under load
 
 Bundled fixes from a multi-hour CivViAccess AdvancedSetup test session

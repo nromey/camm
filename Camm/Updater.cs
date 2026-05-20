@@ -52,8 +52,13 @@ public sealed class Updater
             return UpdateResult.NothingToDo;
         }
 
-        _speak(Strings.Get("Speech.UpdateToVersionPrefix") + release.Version +
-            Strings.Get("Speech.UpdateToVersionSuffix"));
+        // Short utterance ("Updating mod") chosen over the original
+        // "Updating to version X.Y.Z." — the longer phrase routinely
+        // got cut off by the next speech event before Tolk could
+        // finish speaking it. The version number is still visible in
+        // the launcher console output and Lua.log for users who want
+        // the exact value.
+        _speak(Strings.Get("Speech.UpdateMod"));
         _log($"Staging launcher self-update from {launcherAsset.Name}.");
         await StageLauncherUpdateAsync(launcherAsset, ct).ConfigureAwait(false);
         return UpdateResult.LauncherStagedOnly;
