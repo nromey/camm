@@ -11,6 +11,21 @@ can consume CAMM without reading the civ-vi-access source. Pre-1.0
 means any release can break API; consumers pin to a tag SHA and
 upgrade when ready.
 
+## 0.5.5 — 2026-05-19 — Fix v0.5.4 build break (Timer disambiguation)
+
+v0.5.4's coalesce-window implementation referenced `Timer` unqualified.
+Because Camm.csproj has `<UseWindowsForms>true</UseWindowsForms>` for
+the install wizard, that name was ambiguous against
+`System.Windows.Forms.Timer` and broke local AOT publish. CI for both
+the CAMM tag and the CivViAccess v0.3.6 consumption tag failed.
+
+This release qualifies the `Timer` reference as `System.Threading.Timer`
+explicitly. No behavior change vs the intended v0.5.4; the coalesce
+window operates identically once it compiles.
+
+Translators: no LOC changes since v0.5.4 (`Speech.UpdateMod` is still
+the active key).
+
 ## 0.5.4 — 2026-05-19 — Rapid-interrupt coalesce + shorter update speech
 
 Two fixes that surfaced during CivViAccess AdvancedSetup verbosity-

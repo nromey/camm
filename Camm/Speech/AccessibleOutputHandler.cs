@@ -31,14 +31,20 @@ public sealed class AccessibleOutputHandler
     private readonly object _coalesceLock = new();
     private DateTime _interruptCooldownUntil = DateTime.MinValue;
     private string? _pendingInterruptText;
-    private readonly Timer _coalesceTimer;
+    // Fully-qualified: Camm.csproj has UseWindowsForms=true (for the
+    // install wizard), so plain `Timer` is ambiguous against
+    // System.Windows.Forms.Timer. We want the threading variant.
+    private readonly System.Threading.Timer _coalesceTimer;
     private static readonly TimeSpan MinInterruptInterval = TimeSpan.FromMilliseconds(150);
 
     public AccessibleOutputHandler()
     {
         Tolk.TrySAPI(true);
         Tolk.Load();
-        _coalesceTimer = new Timer(CoalesceTimerCallback, null, Timeout.Infinite, Timeout.Infinite);
+        _coalesceTimer = new System.Threading.Timer(
+            CoalesceTimerCallback, null,
+            System.Threading.Timeout.Infinite,
+            System.Threading.Timeout.Infinite);
     }
 
     public void Speak(string text, bool interrupt = true)
@@ -75,7 +81,7 @@ public sealed class AccessibleOutputHandler
                 // plays when the window expires.
                 _pendingInterruptText = text;
                 var remainingMs = (int)Math.Max(1, (_interruptCooldownUntil - now).TotalMilliseconds);
-                _coalesceTimer.Change(remainingMs, Timeout.Infinite);
+                _coalesceTimer.Change(remainingMs, System.Threading.Timeout.Infinite);
             }
         }
     }
