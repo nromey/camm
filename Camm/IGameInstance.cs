@@ -32,4 +32,14 @@ public interface IGameInstance
     // The line CAMM speaks after the game process exits. Used for
     // "Sid Meier's Civilization VI closed." and equivalents.
     string GetClosedAnnouncement();
+
+    // Optional: additional game-written log files to archive on each
+    // launcher startup. CAMM's LogArchiver copies each path to a
+    // per-mod archive dir, gzip-compresses, and prunes archives older
+    // than LogArchiver.RetentionDays. Useful for post-mortem on prior
+    // sessions after the game truncates its logs on next launch.
+    //
+    // Default: empty. Adopters that don't need archiving don't have
+    // to implement.
+    IEnumerable<string> GetArchivableLogPaths() => Array.Empty<string>();
 }

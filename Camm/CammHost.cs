@@ -397,6 +397,13 @@ public static class CammHost
                 : 0L;
         }
 
+        // Archive the prior session's game-written logs BEFORE the
+        // game spawns and truncates them. IGameInstance opts in via
+        // GetArchivableLogPaths(); default is empty (no-op). Catches
+        // failures internally so archive issues never block launch.
+        try { LogArchiver.ArchiveAndPrune(gameInstance); }
+        catch (Exception ex) { Logger.Exception("LogArchiver.ArchiveAndPrune threw", ex); }
+
         var launchAnnouncement = gameInstance.GetLaunchAnnouncement();
         Console.WriteLine($"Launching {gameExePath}...");
         Speak(launchAnnouncement);
