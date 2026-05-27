@@ -218,6 +218,21 @@ public sealed class CammModManifest
     // its lifecycle, just without the log-tail loop.
     public bool LogTailEnabled => Sanitizer is not null && MarkerProtocol is not null;
 
+    // Opt out of CAMM's "sticky NOINTERRUPT" window — a 3-second
+    // post-NOINTERRUPT period during which subsequent interrupt-tier
+    // lines also speak as NOINTERRUPT. The window was added before
+    // adopter-side speech-priority systems existed; it dampens fast
+    // follow-up interrupts so multi-part announces don't get chopped.
+    //
+    // Set true when the adopter's MarkerProtocol manages interrupt
+    // priority itself (CivVIAccess's CivViSpeechShield does this
+    // per-kind across Lua VMs). In that case the sticky window is
+    // strictly over-dampening — a critical-tier announce arriving
+    // 100ms after a status-tier NOINTERRUPT continuation would
+    // incorrectly get downgraded to queued. Leaving false preserves
+    // pre-0.6 behavior for adopters that depend on it.
+    public bool DisableStickyNoInterruptWindow { get; init; } = false;
+
     // True when installer-only mode is combined with a non-empty
     // IfeoTargetExeNames — the v0.5 "update-only IFEO" opt-in. CAMM
     // still skips the locate-game / launch / log-tail / lifecycle-wait

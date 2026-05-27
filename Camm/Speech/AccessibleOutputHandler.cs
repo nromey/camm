@@ -85,6 +85,7 @@ public sealed class AccessibleOutputHandler
         // throwing deep inside the speech pipeline.
         if (protocol is null || sanitizer is null) return;
 
+        var disableStickyWindow = CammHost.Manifest.DisableStickyNoInterruptWindow;
         var lines = message.Split('\n');
         foreach (var line in lines)
         {
@@ -93,13 +94,16 @@ public sealed class AccessibleOutputHandler
             var options = protocol.ParseOptions(line);
             bool interrupt = !options.NoInterrupt;
 
-            if (!interrupt)
+            if (!disableStickyWindow)
             {
-                _lastNonInterruptableMessage = DateTime.UtcNow;
-            }
-            else
-            {
-                interrupt = DateTime.UtcNow >= _lastNonInterruptableMessage.Add(NonInterruptTime);
+                if (!interrupt)
+                {
+                    _lastNonInterruptableMessage = DateTime.UtcNow;
+                }
+                else
+                {
+                    interrupt = DateTime.UtcNow >= _lastNonInterruptableMessage.Add(NonInterruptTime);
+                }
             }
 
             var sanitized = sanitizer.Sanitize(line);
