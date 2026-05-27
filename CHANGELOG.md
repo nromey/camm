@@ -11,6 +11,31 @@ can consume CAMM without reading the civ-vi-access source. Pre-1.0
 means any release can break API; consumers pin to a tag SHA and
 upgrade when ready.
 
+## 0.5.7 — 2026-05-27 — `DisableStickyNoInterruptWindow` manifest opt-in
+
+`AccessibleOutputHandler.OutputMessage` carries a 3-second post-
+NOINTERRUPT window: after any NOINTERRUPT line speaks, subsequent
+interrupt-tier lines also speak as NOINTERRUPT for 3 seconds. The
+window was added before adopter-side speech-priority systems
+existed; it dampens fast follow-up interrupts so multi-part
+announces don't get chopped mid-word.
+
+For adopters that manage interrupt priority themselves (CivVIAccess
+ships per-kind cross-VM shielding in `CivViSpeechShield` from this
+version forward), the 3-second window is strict over-dampening — a
+legitimate critical-tier interrupt arriving 100ms after a status-
+tier continuation would incorrectly speak as NOINTERRUPT.
+
+New manifest field `DisableStickyNoInterruptWindow` (default
+`false`, preserves pre-0.5.7 behavior). Adopters that do their own
+shielding set it `true`; `AccessibleOutputHandler.OutputMessage`
+skips the sticky-window branch when true and trusts the per-line
+`SpeechOptions.NoInterrupt` value verbatim.
+
+Diff: +18 lines in `CammModManifest.cs`, conditional block in
+`AccessibleOutputHandler.cs`. Pure additive — no existing adopter
+behavior changes unless they opt in.
+
 ## 0.5.6 — 2026-05-19 — Replace coalesce with identical-text dedupe
 
 v0.5.4/v0.5.5's deferred-pending coalesce window broke normal
