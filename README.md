@@ -277,8 +277,9 @@ Launcher mode adds:
 
 - **IFEO transparent-launch redirect**, so your user keeps clicking
   Play in Steam exactly the way they always have.
-- **Tolk speech relay** of the game's log file to whichever screen
-  reader is running.
+- **Screen-reader speech relay** of the game's log file to whichever
+  screen reader is running — through Tolk (default) or Prism. Ship one
+  backend or both; see [`build/PRISM.md`](build/PRISM.md).
 - **Foreground handoff and follow-focus minimize**, so the launcher
   console doesn't fight the game for focus.
 - **Lifecycle wait**, so the launcher exits cleanly when the game
@@ -293,7 +294,7 @@ The short version, once you've decided CAMM is right for your mod:
 1. Add CAMM as a git submodule:
    `git submodule add https://github.com/nromey/camm.git camm`,
    then check out the latest tag inside the submodule (currently
-   `v0.5.0`).
+   `v0.6.0`).
 2. In your launcher project's csproj:
    - Set `<TargetFramework>net10.0-windows</TargetFramework>` +
      `<PlatformTarget>x64</PlatformTarget>`.
@@ -304,6 +305,11 @@ The short version, once you've decided CAMM is right for your mod:
    - Add `<ProjectReference Include="..\camm\Camm\Camm.csproj" />`.
    - Embed the Tolk DLLs:
      `<EmbeddedResource Include="..\camm\third_party\tolk\dist\x64\*.dll"><LogicalName>tolk/%(Filename)%(Extension)</LogicalName></EmbeddedResource>`
+   - (Optional) For the Prism backend, `<Import Project="..\camm\build\Camm.Prism.targets" />`
+     and set `<CammPrismMode>BuildFromSource</CammPrismMode>` — builds
+     `prism.dll` from the pinned Prism submodule and embeds it. Ship Tolk,
+     Prism, or both; pick the active one with
+     `CammModManifest.ScreenReaderBackend`. See [`build/PRISM.md`](build/PRISM.md).
    - For each `ModPayload`, embed your payload directory with
      `<LogicalName><payload-name>/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>`.
    - If your repo isn't flat (you have other `.cs` files in sibling
@@ -356,6 +362,8 @@ self-contained.
   `CammModManifest` field documented with examples and a three-mode
   cheat sheet (launcher-with-log-tail, launcher-without-log-tail,
   installer-only).
+- [`build/PRISM.md`](build/PRISM.md) — the optional Prism speech backend:
+  the Tolk/Prism/both bundling choice and build-from-source pipeline.
 - [`docs/migration-test-prompts/`](docs/migration-test-prompts/) —
   AI-assistant acceptance tests for the docs. Point a fresh Claude
   Code session at the prompts to verify the docs still produce a

@@ -92,6 +92,17 @@ public sealed class CammModManifest
     // link). Empty = no link.
     public string ProjectUrl { get; init; } = "";
 
+    // Which screen-reader backend CAMM routes in-game speech through.
+    // Tolk (default) is the cross-mod convention; Prism is the newer
+    // cross-platform library. The adopter must also BUNDLE the matching
+    // native DLLs (embed tolk/* and/or prism/* resources in the launcher
+    // exe — see CivViAccess.csproj). Bundling both lets the runtime fall
+    // back Prism -> Tolk if Prism's native lib is missing or no Prism
+    // backend initializes. Override at launch for testing via the
+    // CAMM_SCREEN_READER_BACKEND env var ("tolk" / "prism").
+    public Speech.ScreenReaderBackend ScreenReaderBackend { get; init; }
+        = Speech.ScreenReaderBackend.Tolk;
+
     // ---------------------------------------------------------------
     //  Auto-update — null/empty fields disable the check
     // ---------------------------------------------------------------

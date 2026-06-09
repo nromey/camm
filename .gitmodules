@@ -1,0 +1,3 @@
+[submodule "third_party/prism"]
+	path = third_party/prism
+	url = https://github.com/ethindp/prism

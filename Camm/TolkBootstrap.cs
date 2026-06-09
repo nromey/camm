@@ -37,7 +37,12 @@ namespace Camm;
 // are AOT-safe (no reflection over user types).
 public static partial class TolkBootstrap
 {
-    private const string ResourcePrefix = "tolk/";
+    // Native speech DLLs are embedded by the consuming exe under one of
+    // these logical-name prefixes: `tolk/<file>` for the Tolk backend,
+    // `prism/<file>` for the Prism backend. An adopter may embed one or
+    // both; this bootstrap extracts whichever are present so the chosen
+    // IScreenReader backend can P/Invoke its native lib.
+    private static readonly string[] ResourcePrefixes = { "tolk/", "prism/" };
     private static string? _tempExtractDir;
 
     [LibraryImport("kernel32.dll", EntryPoint = "SetDllDirectoryW",
@@ -58,11 +63,13 @@ public static partial class TolkBootstrap
     public static void PrepareRuntime()
     {
         var exeDir = AppContext.BaseDirectory;
-        if (File.Exists(Path.Combine(exeDir, "Tolk.dll")))
+        if (File.Exists(Path.Combine(exeDir, "Tolk.dll"))
+            || File.Exists(Path.Combine(exeDir, "prism.dll")))
         {
             // Post-install / pre-extracted case: DLLs already adjacent
             // to the running exe. The Win32 loader finds them via the
-            // default DLL search order. Nothing to do.
+            // default DLL search order. Nothing to do. (Either backend's
+            // presence implies the install-time extraction already ran.)
             return;
         }
 
@@ -105,7 +112,7 @@ public static partial class TolkBootstrap
 
         foreach (var resourceName in asm.GetManifestResourceNames())
         {
-            if (!IsTolkResource(resourceName)) continue;
+            if (!IsNativeResource(resourceName)) continue;
             var fileName = Path.GetFileName(NormalizeSeparators(resourceName));
             if (string.IsNullOrEmpty(fileName)) continue;
             var destPath = Path.Combine(targetDir, fileName);
@@ -141,12 +148,19 @@ public static partial class TolkBootstrap
         catch { /* DLLs may still be locked or already deleted; harmless */ }
     }
 
-    private static bool IsTolkResource(string resourceName)
+    private static bool IsNativeResource(string resourceName)
     {
         // MSBuild on Windows can emit either forward- or backslash
         // separators in LogicalName depending on version, so accept both.
-        return resourceName.StartsWith(ResourcePrefix, StringComparison.OrdinalIgnoreCase)
-            || resourceName.StartsWith("tolk\\", StringComparison.OrdinalIgnoreCase);
+        foreach (var prefix in ResourcePrefixes)
+        {
+            if (resourceName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                || resourceName.StartsWith(prefix.Replace('/', '\\'), StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static string NormalizeSeparators(string s) =>

@@ -140,6 +140,33 @@ is the documented escape hatch for combining WinForms with
 `PublishAot`. (CAMM's wizard is intentionally code-only — no
 Designer, no data binding, no property grid — so trimming is safe.)
 
+### Optional: the Prism speech backend
+
+By default CAMM speaks through **Tolk** (the cross-mod convention,
+embedded above). You can instead — or additionally — ship **Prism**
+([ethindp/prism](https://github.com/ethindp/prism)), a newer
+cross-platform screen-reader library. Bundle one backend or both;
+`CammModManifest.ScreenReaderBackend` (default `Tolk`) picks the active
+one, with automatic Prism → Tolk fallback if Prism can't initialize.
+
+To bundle Prism, import the CAMM targets and build it from the pinned
+Prism submodule during your build:
+
+```xml
+<Import Project="..\camm\build\Camm.Prism.targets" />
+<PropertyGroup>
+  <CammPrismMode>BuildFromSource</CammPrismMode>
+</PropertyGroup>
+```
+
+This builds `prism.dll` from `camm/third_party/prism` and embeds it as
+`prism/prism.dll` (extracted at runtime by the same `TolkBootstrap` step
+as the Tolk sidecars). `BuildFromSource` needs a C++ toolchain (Visual
+Studio with the C++ workload; CI loads MSVC); for toolchain-less
+environments use `Prebuilt`. The full detail — modes, toolchain notes,
+and why Prism is built rather than vendored as a binary — is in
+[`build/PRISM.md`](../build/PRISM.md).
+
 ### Multi-source single-payload pattern
 
 Sometimes your mod's payload doesn't live in a single folder.

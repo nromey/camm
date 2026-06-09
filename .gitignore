@@ -418,3 +418,7 @@ FodyWeavers.xsd
 .claude/
 
 *.civ6suo
+# Prism native backend: built from the third_party/prism submodule by
+# build/Camm.Prism.targets (build/build-prism.ps1). Build output, not committed.
+/third_party/prism-dist/
+/third_party/prism-build/

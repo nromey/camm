@@ -193,6 +193,34 @@ link. Empty = no link.
 ProjectUrl = "https://github.com/nromey/civ-vi-access"
 ```
 
+### `ScreenReaderBackend : ScreenReaderBackend = Tolk`
+
+Which screen-reader output library CAMM routes in-game speech through:
+`Tolk` (default — the cross-mod convention) or `Prism`
+([ethindp/prism](https://github.com/ethindp/prism), broader cross-platform
+reach). `AccessibleOutputHandler` calls through the chosen `IScreenReader`;
+the dedupe + interrupt policy is backend-agnostic.
+
+```csharp
+ScreenReaderBackend = Camm.Speech.ScreenReaderBackend.Prism   // default is Tolk
+```
+
+You must also **bundle** the matching native DLLs — embed `tolk/*` and/or
+`prism/*` resources in your launcher exe. An adopter ships Tolk, Prism, or
+both:
+
+- Tolk: embed the vendored binaries
+  (`..\camm\third_party\tolk\dist\x64\*.dll` → `tolk/...`).
+- Prism: import `camm/build/Camm.Prism.targets` and set
+  `<CammPrismMode>BuildFromSource</CammPrismMode>` (builds `prism.dll` from
+  the pinned Prism submodule during your build and embeds it as
+  `prism/prism.dll`). See [`build/PRISM.md`](../build/PRISM.md).
+
+If `Prism` is selected but its native lib is missing or no Prism backend
+initializes, CAMM falls back to Tolk automatically. Override the selection
+at launch (no rebuild) with the `CAMM_SCREEN_READER_BACKEND` env var
+(`tolk` / `prism`) — handy for A/B testing before a runtime picker exists.
+
 ## Auto-update fields (all-or-nothing)
 
 These three fields work as a unit. Either set all three (auto-update

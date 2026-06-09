@@ -2,7 +2,6 @@ using System.Diagnostics;
 using Camm.Localization;
 using Camm.Speech;
 using Camm.Wizard;
-using DavyKager;
 
 namespace Camm;
 
@@ -105,16 +104,14 @@ public static class CammHost
         AccessibleOutputHandler accessibleOutput;
         try
         {
-            accessibleOutput = new AccessibleOutputHandler();
-            try
-            {
-                var reader = Tolk.DetectScreenReader();
-                Logger.Info($"  Tolk.DetectScreenReader: '{reader ?? "(null - no screen reader detected)"}'");
-                Logger.Info($"  Tolk.HasSpeech: {Tolk.HasSpeech()}");
-                Logger.Info($"  Tolk.IsLoaded: {Tolk.IsLoaded()}");
-                Logger.Info($"  Tolk.HasBraille: {Tolk.HasBraille()}");
-            }
-            catch (Exception detectEx) { Logger.Exception("Tolk detection probes threw", detectEx); }
+            // ScreenReaderFactory picks Tolk or Prism (manifest default,
+            // overridable via CAMM_SCREEN_READER_BACKEND) and falls back
+            // Prism -> Tolk if Prism can't initialize.
+            var screenReader = ScreenReaderFactory.Create(manifest.ScreenReaderBackend);
+            accessibleOutput = new AccessibleOutputHandler(screenReader);
+            Logger.Info($"  Backend={screenReader.BackendName}, " +
+                        $"detectedReader='{screenReader.DetectedReader ?? "(none)"}', " +
+                        $"speaking={screenReader.IsSpeaking}");
         }
         catch (Exception ex)
         {

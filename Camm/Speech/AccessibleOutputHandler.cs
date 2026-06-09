@@ -1,8 +1,7 @@
-using DavyKager;
-
 namespace Camm.Speech;
 
-// Routes per-line log output to Tolk, with markup sanitization and
+// Routes per-line log output to the selected screen-reader backend
+// (IScreenReader: Tolk or Prism), with markup sanitization and
 // interrupt-policy management. Per-mod knowledge (which lines to
 // pick up, how to clean their markup) comes from the manifest's
 // IScreenReaderMarkerProtocol + IMessageSanitizer.
@@ -41,20 +40,26 @@ public sealed class AccessibleOutputHandler
     private DateTime _lastSpokenAt = DateTime.MinValue;
     private static readonly TimeSpan IdenticalDedupeWindow = TimeSpan.FromMilliseconds(250);
 
-    public AccessibleOutputHandler()
+    // The chosen output backend (Tolk or Prism). Constructed + initialized
+    // by ScreenReaderFactory; this layer is backend-agnostic.
+    private readonly IScreenReader _reader;
+
+    public AccessibleOutputHandler(IScreenReader reader)
     {
-        Tolk.TrySAPI(true);
-        Tolk.Load();
+        _reader = reader;
     }
+
+    // Exposed so the host can log backend identity / the detected reader.
+    public IScreenReader Reader => _reader;
 
     public void Speak(string text, bool interrupt = true)
     {
         SpeakInternal(text, interrupt);
     }
 
-    // Single chokepoint for Tolk.Output calls so the dedupe filter
-    // applies uniformly to every speech path (Speak() direct callers
-    // AND OutputMessage's per-line dispatch).
+    // Single chokepoint for backend speech so the dedupe filter applies
+    // uniformly to every speech path (Speak() direct callers AND
+    // OutputMessage's per-line dispatch).
     private void SpeakInternal(string text, bool interrupt)
     {
         if (interrupt)
@@ -72,7 +77,7 @@ public sealed class AccessibleOutputHandler
                 _lastSpokenAt = now;
             }
         }
-        Tolk.Output(text, interrupt);
+        _reader.Speak(text, interrupt);
     }
 
     public void OutputMessage(string message)
@@ -107,7 +112,7 @@ public sealed class AccessibleOutputHandler
             }
 
             var sanitized = sanitizer.Sanitize(line);
-            Logger.Info($"OutputMessage forwarding to Tolk (interrupt={interrupt}): '{sanitized}'");
+            Logger.Info($"OutputMessage forwarding to {_reader.BackendName} (interrupt={interrupt}): '{sanitized}'");
             SpeakInternal(sanitized, interrupt);
         }
     }

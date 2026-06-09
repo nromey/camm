@@ -11,6 +11,63 @@ can consume CAMM without reading the civ-vi-access source. Pre-1.0
 means any release can break API; consumers pin to a tag SHA and
 upgrade when ready.
 
+## 0.6.0 — 2026-06-09 — Prism screen-reader backend + `IScreenReader` abstraction
+
+CAMM now routes in-game speech through a backend-neutral `IScreenReader`
+interface with two implementations the adopter chooses between: **Tolk**
+(default, the cross-mod convention) and **Prism**
+([ethindp/prism](https://github.com/ethindp/prism), the newer cross-platform
+library). This adds Prism's broader screen-reader reach (NVDA/JAWS/SAPI/
+OneCore/UIA/ZDSR/PCTalker on Windows; VoiceOver/AVSpeech, Orca/speech-
+dispatcher, etc. on other platforms) without imposing it — Tolk stays the
+default and the whole thing is opt-in.
+
+New public surface (`Camm.Speech`):
+
+- `IScreenReader` — `Initialize()` / `Speak(text, interrupt)` / `Stop()` /
+  `IsSpeaking` / `BackendName` / `DetectedReader`, plus `IDisposable`.
+- `TolkScreenReader` (wraps the vendored DavyKager.Tolk binding; default) and
+  `PrismScreenReader` (our own `[LibraryImport]` P/Invoke layer over
+  `prism.dll` — Native-AOT clean, no third-party managed wrapper).
+- `ScreenReaderBackend` enum + `ScreenReaderFactory.Create(...)`, which picks
+  the backend and falls back Prism -> Tolk if Prism can't initialize (missing
+  native lib, no available backend, init error).
+
+Selection:
+
+- `CammModManifest.ScreenReaderBackend` (default `Tolk`) sets the backend.
+- `CAMM_SCREEN_READER_BACKEND` env var (`tolk` / `prism`) overrides at launch
+  for A/B testing with no rebuild. A runtime in-app picker comes later.
+
+`AccessibleOutputHandler` now takes an `IScreenReader` (previously a
+parameterless ctor that called Tolk directly). The dedupe + sticky-
+NOINTERRUPT policy stays above the backend so it applies to both uniformly.
+**Breaking** for any code constructing `AccessibleOutputHandler()` directly;
+`CammHost` is updated.
+
+Bundling — an adopter ships Tolk, Prism, or both:
+
+- Tolk continues to ship as vendored prebuilt binaries (`third_party/tolk/`):
+  it is effectively frozen, so a committed binary never goes stale.
+- Prism is **built from source** from a new pinned submodule at
+  `third_party/prism/` (it iterates weekly; a committed binary would lock the
+  build to a stale version). `build/Camm.Prism.targets` — imported by the
+  launcher csproj with `<CammPrismMode>BuildFromSource</CammPrismMode>` — runs
+  `build/build-prism.ps1` during the launcher build and embeds the result as
+  the `prism/prism.dll` resource. The build is incremental (rebuilds only when
+  the submodule pin changes), out-of-source (the submodule never goes dirty),
+  CRT-static (no VC++ redist dependency), and delay-loads the per-reader
+  client DLLs (so it loads cleanly with only NVDA/SAPI/JAWS/OneCore/UIA).
+  Modes: `None` (default — Tolk-only), `BuildFromSource`, `Prebuilt`. See
+  `build/PRISM.md`.
+- `TolkBootstrap` now extracts `prism/*` resources alongside `tolk/*` (same
+  temp-dir + SetDllDirectory mechanism); behavior for Tolk-only adopters is
+  unchanged.
+
+Validated 2026-06-09: Prism initializes against NVDA and speaks via the
+launcher with the from-source build pipeline end to end; the Tolk path is
+unchanged.
+
 ## 0.5.8 — 2026-06-09 — Report-bridge hooks: `LogLineObserver` + `ForceForegroundForProcess`
 
 Two additive, backward-compatible API surfaces an adopter can use to host a

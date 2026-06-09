@@ -1,0 +1,78 @@
+<Project>
+
+  <!--
+    Camm.Prism.targets — opt-in Prism native speech backend for a
+    CAMM-built launcher. Import from the launcher .csproj:
+
+        <Import Project="..\camm\build\Camm.Prism.targets" />
+        <PropertyGroup>
+          <CammPrismMode>BuildFromSource</CammPrismMode>
+        </PropertyGroup>
+
+    CammPrismMode (default None):
+      None            Don't bundle Prism. Launcher is Tolk-only.
+      BuildFromSource Build prism.dll from the pinned camm/third_party/prism
+                      submodule during THIS build (incremental — skips when
+                      already built from the current submodule commit) and
+                      embed it. Requires a C++ toolchain (Visual Studio with
+                      the C++ workload; CI loads MSVC via msvc-dev-cmd).
+                      Prism iterates weekly, so building keeps it fresh while
+                      the pinned submodule keeps tags reproducible.
+      Prebuilt        Embed an existing prism.dll as-is. Point at it with
+                      CammPrismPrebuiltDll (defaults to the build-output
+                      location). For environments with no C++ toolchain.
+
+    Embeds prism.dll as the resource `prism/prism.dll`; Camm.TolkBootstrap
+    extracts it next to the exe at runtime and Camm.Speech.PrismScreenReader
+    P/Invokes it. WHICH backend is used at launch is a separate, runtime
+    decision (CammModManifest.ScreenReaderBackend, default Tolk).
+
+    Bundling Tolk is independent — keep embedding the tolk/* DLLs in the
+    launcher csproj. An adopter can ship Tolk, Prism, or both.
+  -->
+
+  <PropertyGroup>
+    <CammPrismMode Condition="'$(CammPrismMode)' == ''">None</CammPrismMode>
+
+    <_CammBuildDir>$(MSBuildThisFileDirectory)</_CammBuildDir>
+    <_CammPrismSource>$([System.IO.Path]::GetFullPath('$(_CammBuildDir)..\third_party\prism'))</_CammPrismSource>
+    <_CammPrismOutDir>$([System.IO.Path]::GetFullPath('$(_CammBuildDir)..\third_party\prism-dist\x64'))</_CammPrismOutDir>
+    <_CammPrismScript>$(_CammBuildDir)build-prism.ps1</_CammPrismScript>
+
+    <!-- Prebuilt mode: an adopter may point at their own DLL; default to
+         the build-output location so a previously-built DLL is reused. -->
+    <CammPrismPrebuiltDll Condition="'$(CammPrismPrebuiltDll)' == ''">$(_CammPrismOutDir)\prism.dll</CammPrismPrebuiltDll>
+
+    <_CammPrismDll Condition="'$(CammPrismMode)' == 'BuildFromSource'">$(_CammPrismOutDir)\prism.dll</_CammPrismDll>
+    <_CammPrismDll Condition="'$(CammPrismMode)' == 'Prebuilt'">$(CammPrismPrebuiltDll)</_CammPrismDll>
+  </PropertyGroup>
+
+  <!-- Build prism.dll from the submodule (BuildFromSource only). The
+       script is incremental: it skips the ~2-minute C++ build when
+       prism.dll is already built from the current submodule commit, so
+       normal incremental dev builds pay only a sub-second check. -->
+  <Target Name="CammBuildPrism" Condition="'$(CammPrismMode)' == 'BuildFromSource'">
+    <Message Importance="high" Text="CAMM Prism: ensuring prism.dll is built from $(_CammPrismSource)" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(_CammPrismScript)&quot; -Source &quot;$(_CammPrismSource)&quot; -Out &quot;$(_CammPrismOutDir)&quot;" />
+  </Target>
+
+  <!-- Add the embedded resource BEFORE AssignTargetPaths so the rest of
+       the resource pipeline (notably CreateCSharpManifestResourceName)
+       sees it and honors LogicalName = the manifest name TolkBootstrap
+       matches on (`prism/`). DependsOn CammBuildPrism so the DLL exists. -->
+  <Target Name="CammEmbedPrism"
+          Condition="'$(CammPrismMode)' != 'None'"
+          DependsOnTargets="CammBuildPrism"
+          BeforeTargets="AssignTargetPaths">
+    <Error Condition="!Exists('$(_CammPrismDll)')"
+           Text="CAMM Prism: expected prism.dll at '$(_CammPrismDll)' but it does not exist (CammPrismMode=$(CammPrismMode)). For BuildFromSource ensure the Prism submodule is initialized and a C++ toolchain is available; for Prebuilt set CammPrismPrebuiltDll." />
+    <ItemGroup>
+      <EmbeddedResource Include="$(_CammPrismDll)">
+        <LogicalName>prism/prism.dll</LogicalName>
+        <Visible>false</Visible>
+      </EmbeddedResource>
+    </ItemGroup>
+    <Message Importance="high" Text="CAMM Prism: embedding $(_CammPrismDll) as prism/prism.dll" />
+  </Target>
+
+</Project>
