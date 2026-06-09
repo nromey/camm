@@ -122,7 +122,7 @@ public static class CammHost
             throw;
         }
         var textOutput = new TextOutputHandler();
-        var mediator = new Mediator(accessibleOutput, textOutput);
+        var mediator = new Mediator(accessibleOutput, textOutput, manifest.LogLineObserver);
 
         void Log(string msg) { Console.WriteLine(msg); Logger.Info($"LOG: {msg}"); }
         void Speak(string msg)

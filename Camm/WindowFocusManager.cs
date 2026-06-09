@@ -57,6 +57,40 @@ public static partial class WindowFocusManager
         return false;
     }
 
+    // Poll a SPECIFIC process's main window into existence, then force it
+    // foreground (same AttachThreadInput workaround as EnsureForeground, but
+    // aimed at a known child process the launcher spawned rather than the
+    // game-by-name). Used for the report window — an Edge --app process the
+    // launcher launches while the fullscreen game holds foreground, which
+    // Windows would otherwise refuse to surface. Returns true if it reached
+    // the foreground within the budget; false on timeout / early exit (caller
+    // falls back to letting the user Alt+Tab). Safe to call off-thread.
+    public static bool ForceForegroundForProcess(Process proc, TimeSpan timeout)
+    {
+        if (proc is null) return false;
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                if (proc.HasExited) return false;
+                proc.Refresh();
+                var hWnd = proc.MainWindowHandle;
+                if (hWnd != IntPtr.Zero && IsWindowVisible(hWnd))
+                {
+                    ForceForeground(hWnd);
+                    if (GetForegroundWindow() == hWnd) return true;
+                }
+            }
+            catch
+            {
+                // Process may exit between HasExited and MainWindowHandle.
+            }
+            Thread.Sleep(150);
+        }
+        return false;
+    }
+
     // Starts a thread-pool poll that minimizes the inactive window
     // whenever foreground swaps between the game and the launcher
     // console. Fire-and-forget — the task is a background thread-pool

@@ -145,6 +145,18 @@ public sealed class CammModManifest
     // bridge to fire.
     public Speech.IScreenReaderMarkerProtocol? MarkerProtocol { get; init; }
 
+    // Optional secondary observer for raw log-tail content. Invoked with
+    // every complete multi-line chunk the tail reads, IN ADDITION to and
+    // INDEPENDENT of the MarkerProtocol speech routing. The observer runs
+    // on the log-tail background thread and must not block; CAMM swallows
+    // (and logs) any exception it throws so the speech path is never
+    // affected. Civ VI Access uses this for the WebView2 report bridge —
+    // the mod emits #SHOWREPORT marker lines that the observer accumulates
+    // and renders in a launcher-hosted window. CAMM stays oblivious to the
+    // report concept; the marker vocabulary and rendering live entirely in
+    // the consumer. Null = no secondary channel.
+    public Action<string>? LogLineObserver { get; init; }
+
     // Per-game hooks for the main launch flow (locate game, log file,
     // launch + closed announcements). Null = installer-only mode:
     // CammHost.RunAsync skips the entire game-launch / log-tail /

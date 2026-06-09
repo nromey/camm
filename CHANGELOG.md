@@ -11,6 +11,29 @@ can consume CAMM without reading the civ-vi-access source. Pre-1.0
 means any release can break API; consumers pin to a tag SHA and
 upgrade when ready.
 
+## 0.5.8 — 2026-06-09 — Report-bridge hooks: `LogLineObserver` + `ForceForegroundForProcess`
+
+Two additive, backward-compatible API surfaces an adopter can use to host a
+secondary window fed by raw game-log content. Both ship in the launcher's
+WebView2 report bridge (Civ VI Access); CAMM stays oblivious to the "report"
+concept — the marker vocabulary and rendering live entirely in the consumer.
+
+- `CammModManifest.LogLineObserver` (`Action<string>?`, default null): an
+  optional secondary sink invoked with every complete multi-line chunk the
+  log-tail reads, IN ADDITION to and INDEPENDENT of the `MarkerProtocol`
+  speech routing. Runs on the log-tail thread; CAMM swallows + logs any
+  exception it throws so the speech path is never affected.
+- `Mediator` gains an optional `lineObserver` constructor parameter and fans
+  the message out in `Output(...)` after speaking (speech stays the primary,
+  load-bearing channel). `CammHost.RunAsync` wires `manifest.LogLineObserver`
+  through.
+- `WindowFocusManager.ForceForegroundForProcess(Process, TimeSpan)`: poll a
+  specific launcher-spawned child process's main window into existence, then
+  force it foreground (same `AttachThreadInput` workaround as
+  `EnsureForeground`, aimed at a known process rather than game-by-name). For
+  surfacing an Edge `--app` report window over the fullscreen game. Returns
+  false on timeout (caller falls back to letting the user Alt+Tab).
+
 ## 0.5.7 — 2026-05-27 — `DisableStickyNoInterruptWindow` manifest opt-in
 
 `AccessibleOutputHandler.OutputMessage` carries a 3-second post-
