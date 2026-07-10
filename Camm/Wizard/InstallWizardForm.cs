@@ -1,5 +1,6 @@
 using System.Runtime.Versioning;
 using System.Windows.Forms;
+using System.Windows.Forms.Automation;
 using Camm.Localization;
 using DavyKager;
 
@@ -244,6 +245,10 @@ public sealed class InstallWizardForm : Form
         if (page is UserControl uc)
         {
             uc.Dock = DockStyle.Fill;
+            // Name the page container so Tab / object-nav onto it says
+            // e.g. "Update channel pane" instead of a bare "pane". The
+            // page is still object-navigable for a manual re-read.
+            uc.AccessibleName = page.Title;
             _pageHost.Controls.Add(uc);
         }
         UpdateButtons();
@@ -299,14 +304,39 @@ public sealed class InstallWizardForm : Form
         else ActiveControl = target;
     }
 
-    // Delayed speak via a UI Timer. The 250ms gap lets NVDA process
-    // its own focus / window-shown announcements first; our
-    // interrupt=true call then wipes those and speaks the page
-    // content cleanly. Without the delay, NVDA's focus event fires
-    // AFTER our Tolk.Output and the user only hears "Next button".
+    // How the wizard announces a page when it becomes active.
+    //   Uia  — raise a UIA Notification carrying the AnnouncementText,
+    //          letting the screen reader announce it through the
+    //          platform's own channel (no speech-lib routing, no focus
+    //          hack). THE DEFAULT. Falls back to Tolk if the platform
+    //          can't deliver the notification (no listening screen
+    //          reader / unsupported), so a page is never left silent.
+    //   Tolk — speak the AnnouncementText directly via the speech lib
+    //          (dead-reliable; the fallback, and forceable for A/B).
+    //   Both — fire both, for side-by-side comparison.
+    // Overridable at runtime via CAMM_INSTALLER_ANNOUNCE so a single
+    // build can be A/B'd with `--wizard-test` (see ResolveAnnounceMode).
+    private enum AnnounceMode { Tolk, Uia, Both }
+
+    private static AnnounceMode ResolveAnnounceMode()
+    {
+        var v = Environment.GetEnvironmentVariable("CAMM_INSTALLER_ANNOUNCE")
+            ?.Trim().ToLowerInvariant();
+        return v switch
+        {
+            "tolk" => AnnounceMode.Tolk,
+            "both" => AnnounceMode.Both,
+            _ => AnnounceMode.Uia,
+        };
+    }
+
+    // Delayed announce via a UI Timer. The 250ms gap lets NVDA process
+    // its own focus / window-shown announcements first; our announce
+    // then lands cleanly on top. Without the delay, NVDA's focus event
+    // fires AFTER ours and the user only hears "Next button".
     //
     // Reusing one timer instance means a fast page change (Back-then-
-    // Next) cancels the pending speak instead of stacking two.
+    // Next) cancels the pending announce instead of stacking two.
     private void DelayedSpeak(string text)
     {
         _speakTimer?.Stop();
@@ -317,18 +347,93 @@ public sealed class InstallWizardForm : Form
             _speakTimer?.Stop();
             _speakTimer?.Dispose();
             _speakTimer = null;
-            try
+            var mode = ResolveAnnounceMode();
+            switch (mode)
             {
-                var ok = Tolk.Output(text, true);
-                Logger.Info($"InstallWizardForm.DelayedSpeak: " +
-                    $"Tolk.Output returned {ok}, len={text.Length}");
-            }
-            catch (Exception ex)
-            {
-                Logger.Exception("InstallWizardForm.DelayedSpeak: Tolk.Output threw", ex);
+                case AnnounceMode.Tolk:
+                    SpeakViaTolk(text);
+                    break;
+                case AnnounceMode.Both:
+                    SpeakViaTolk(text);
+                    SpeakViaUia(text);
+                    break;
+                default: // Uia — native first, Tolk only if it wasn't delivered
+                    if (!SpeakViaUia(text)) SpeakViaTolk(text);
+                    break;
             }
         };
         _speakTimer.Start();
+    }
+
+    private static void SpeakViaTolk(string text)
+    {
+        try
+        {
+            var ok = Tolk.Output(text, true);
+            Logger.Info($"InstallWizardForm.SpeakViaTolk: " +
+                $"Tolk.Output returned {ok}, len={text.Length}");
+        }
+        catch (Exception ex)
+        {
+            Logger.Exception("InstallWizardForm.SpeakViaTolk: Tolk.Output threw", ex);
+        }
+    }
+
+    // Announce through UI Automation instead of the speech lib. The
+    // form's AccessibilityObject raises a Notification event; screen
+    // readers that honor UIA notifications (NVDA, Narrator) speak the
+    // text without focus moving. ImportantMostRecent coalesces a rapid
+    // Back/Next to just the latest page. Returns whether the platform
+    // delivered the notification — false means no UIA client heard it,
+    // and the caller falls back to Tolk so the page is never silent.
+    private bool SpeakViaUia(string text)
+    {
+        // Unlike Tolk (interrupt=true, which replaces NVDA's own focus
+        // announcement), a UIA notification stacks ON TOP of it. When
+        // the page announcement leads with the same words the focused
+        // control just spoke — e.g. the Channel page's "Update channel"
+        // being both the heading AND the combo's name — the user hears
+        // it twice. Strip that leading duplicate so the notification
+        // adds only what focus didn't already say.
+        var announce = StripLeadingFocusName(text);
+        try
+        {
+            var ok = AccessibilityObject.RaiseAutomationNotification(
+                AutomationNotificationKind.Other,
+                AutomationNotificationProcessing.ImportantMostRecent,
+                announce);
+            Logger.Info($"InstallWizardForm.SpeakViaUia: " +
+                $"RaiseAutomationNotification returned {ok}, len={announce.Length}");
+            return ok;
+        }
+        catch (Exception ex)
+        {
+            Logger.Exception("InstallWizardForm.SpeakViaUia: RaiseAutomationNotification threw", ex);
+            return false;
+        }
+    }
+
+    // The name NVDA already spoke via its focus event = the accessible
+    // name of the control we focused for this page. Mirrors SetPageFocus's
+    // target selection so the two stay in lockstep.
+    private string? FocusedControlName()
+    {
+        if (_index < 0) return null;
+        var fallback = _btnNext.Enabled ? _btnNext : (Control)_btnCancel;
+        var focused = _pages[_index].InitialFocusControl ?? fallback;
+        return focused?.AccessibleName;
+    }
+
+    // Drop a leading occurrence of the focused control's name (plus any
+    // trailing separator) from the announcement, so UIA mode doesn't
+    // echo what focus just said. No-op when there's no overlap.
+    private string StripLeadingFocusName(string text)
+    {
+        var name = FocusedControlName();
+        if (string.IsNullOrWhiteSpace(name)) return text;
+        if (!text.StartsWith(name, StringComparison.OrdinalIgnoreCase)) return text;
+        var rest = text.Substring(name!.Length).TrimStart(' ', '.', ':', ',', '-', '—');
+        return rest.Length > 0 ? rest : text;
     }
 
     protected override void OnShown(EventArgs e)

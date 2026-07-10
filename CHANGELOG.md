@@ -11,6 +11,24 @@ can consume CAMM without reading the civ-vi-access source. Pre-1.0
 means any release can break API; consumers pin to a tag SHA and
 upgrade when ready.
 
+## 0.6.1 — 2026-07-10 — Installer speaks its pages via native UIA (Tolk fallback)
+
+The install wizard now announces each page through a UI Automation
+Notification event (`AccessibleObject.RaiseAutomationNotification`): the
+screen reader speaks the page's purpose and options through the
+platform's own channel — no speech-lib routing and no focus hack. Tolk
+becomes the automatic fallback rather than the primary path: if the
+platform can't deliver the notification (no listening screen reader, or
+an unsupported one), the wizard speaks via Tolk so a page is never
+silent. The speech libraries still ship regardless (the launcher needs
+them to voice the game at runtime), so this adds no weight.
+
+Overridable at runtime with `CAMM_INSTALLER_ANNOUNCE=tolk|uia|both` for
+A/B testing. Two supporting fixes: each page container is now named, so
+Tab / object-nav announce e.g. "Update channel pane" instead of a bare
+"pane"; and the UIA notification strips a leading duplicate when a
+page's announcement would otherwise echo the focused control's name.
+
 ## 0.6.0 — 2026-06-09 — Prism screen-reader backend + `IScreenReader` abstraction
 
 CAMM now routes in-game speech through a backend-neutral `IScreenReader`
